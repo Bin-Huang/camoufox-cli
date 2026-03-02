@@ -1,0 +1,10 @@
+{
+  "name": "camoufox-cli",
+  "version": "0.0.2",
+  "description": "Anti-detect headless browser CLI for AI agents, powered by Camoufox",
+  "bin": {
+    "cfox": "./bin/cfox.js"
+  },
+  "repository": "https://github.com/Bin-Huang/camoufox-cli",
+  "license": "MIT"
+}

@@ -1,0 +1,16 @@
+[project]
+name = "cfox"
+version = "0.1.0"
+description = "Anti-detect browser daemon for AI agents, powered by Camoufox"
+requires-python = ">=3.10"
+dependencies = [
+    "camoufox[geoip]",
+    "playwright",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.backends"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cfox"]
