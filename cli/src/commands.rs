@@ -61,7 +61,7 @@ pub fn parse_args(args: Vec<String>) -> Result<(GlobalFlags, Value), String> {
     let cmd = match action {
         // --- Navigation ---
         "open" => {
-            let url = rest.get(1).ok_or("Usage: cfox open <url>")?;
+            let url = rest.get(1).ok_or("Usage: camoufox-cli open <url>")?;
             json!({"id": "r1", "action": "open", "params": {"url": url}})
         }
         "back" => json!({"id": "r1", "action": "back", "params": {}}),
@@ -89,44 +89,44 @@ pub fn parse_args(args: Vec<String>) -> Result<(GlobalFlags, Value), String> {
 
         // --- Interaction ---
         "click" => {
-            let ref_str = rest.get(1).ok_or("Usage: cfox click @e1")?;
+            let ref_str = rest.get(1).ok_or("Usage: camoufox-cli click @e1")?;
             json!({"id": "r1", "action": "click", "params": {"ref": ref_str}})
         }
         "fill" => {
-            let ref_str = rest.get(1).ok_or("Usage: cfox fill @e1 \"text\"")?;
-            let text = rest.get(2).ok_or("Usage: cfox fill @e1 \"text\"")?;
+            let ref_str = rest.get(1).ok_or("Usage: camoufox-cli fill @e1 \"text\"")?;
+            let text = rest.get(2).ok_or("Usage: camoufox-cli fill @e1 \"text\"")?;
             json!({"id": "r1", "action": "fill", "params": {"ref": ref_str, "text": text}})
         }
         "type" => {
-            let ref_str = rest.get(1).ok_or("Usage: cfox type @e1 \"text\"")?;
-            let text = rest.get(2).ok_or("Usage: cfox type @e1 \"text\"")?;
+            let ref_str = rest.get(1).ok_or("Usage: camoufox-cli type @e1 \"text\"")?;
+            let text = rest.get(2).ok_or("Usage: camoufox-cli type @e1 \"text\"")?;
             json!({"id": "r1", "action": "type", "params": {"ref": ref_str, "text": text}})
         }
         "select" => {
-            let ref_str = rest.get(1).ok_or("Usage: cfox select @e1 \"option\"")?;
-            let value = rest.get(2).ok_or("Usage: cfox select @e1 \"option\"")?;
+            let ref_str = rest.get(1).ok_or("Usage: camoufox-cli select @e1 \"option\"")?;
+            let value = rest.get(2).ok_or("Usage: camoufox-cli select @e1 \"option\"")?;
             json!({"id": "r1", "action": "select", "params": {"ref": ref_str, "value": value}})
         }
         "check" => {
-            let ref_str = rest.get(1).ok_or("Usage: cfox check @e1")?;
+            let ref_str = rest.get(1).ok_or("Usage: camoufox-cli check @e1")?;
             json!({"id": "r1", "action": "check", "params": {"ref": ref_str}})
         }
         "hover" => {
-            let ref_str = rest.get(1).ok_or("Usage: cfox hover @e1")?;
+            let ref_str = rest.get(1).ok_or("Usage: camoufox-cli hover @e1")?;
             json!({"id": "r1", "action": "hover", "params": {"ref": ref_str}})
         }
         "press" => {
-            let key = rest.get(1).ok_or("Usage: cfox press Enter")?;
+            let key = rest.get(1).ok_or("Usage: camoufox-cli press Enter")?;
             json!({"id": "r1", "action": "press", "params": {"key": key}})
         }
 
         // --- Data extraction ---
         "text" => {
-            let target = rest.get(1).ok_or("Usage: cfox text @e1 | cfox text body")?;
+            let target = rest.get(1).ok_or("Usage: camoufox-cli text @e1 | camoufox-cli text body")?;
             json!({"id": "r1", "action": "text", "params": {"target": target}})
         }
         "eval" => {
-            let expr = rest.get(1).ok_or("Usage: cfox eval \"document.title\"")?;
+            let expr = rest.get(1).ok_or("Usage: camoufox-cli eval \"document.title\"")?;
             json!({"id": "r1", "action": "eval", "params": {"expression": expr}})
         }
         "screenshot" => {
@@ -142,22 +142,22 @@ pub fn parse_args(args: Vec<String>) -> Result<(GlobalFlags, Value), String> {
             json!({"id": "r1", "action": "screenshot", "params": params})
         }
         "pdf" => {
-            let path = rest.get(1).ok_or("Usage: cfox pdf output.pdf")?;
+            let path = rest.get(1).ok_or("Usage: camoufox-cli pdf output.pdf")?;
             json!({"id": "r1", "action": "pdf", "params": {"path": path}})
         }
 
         // --- Scroll & Wait ---
         "scroll" => {
-            let direction = rest.get(1).ok_or("Usage: cfox scroll down [px]")?;
+            let direction = rest.get(1).ok_or("Usage: camoufox-cli scroll down [px]")?;
             let amount: u32 = rest.get(2)
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(500);
             json!({"id": "r1", "action": "scroll", "params": {"direction": direction, "amount": amount}})
         }
         "wait" => {
-            let target = rest.get(1).ok_or("Usage: cfox wait @e1 | cfox wait 2000 | cfox wait --url \"pattern\"")?;
+            let target = rest.get(1).ok_or("Usage: camoufox-cli wait @e1 | camoufox-cli wait 2000 | camoufox-cli wait --url \"pattern\"")?;
             if target == "--url" {
-                let pattern = rest.get(2).ok_or("Usage: cfox wait --url \"*/dashboard\"")?;
+                let pattern = rest.get(2).ok_or("Usage: camoufox-cli wait --url \"*/dashboard\"")?;
                 json!({"id": "r1", "action": "wait", "params": {"url": pattern}})
             } else if target.starts_with('@') || target.chars().next().map_or(false, |c| c.is_alphabetic()) {
                 // ref like @e1 or CSS selector
@@ -176,7 +176,7 @@ pub fn parse_args(args: Vec<String>) -> Result<(GlobalFlags, Value), String> {
         // --- Tab management ---
         "tabs" => json!({"id": "r1", "action": "tabs", "params": {}}),
         "switch" => {
-            let index = rest.get(1).ok_or("Usage: cfox switch <tab-index>")?;
+            let index = rest.get(1).ok_or("Usage: camoufox-cli switch <tab-index>")?;
             let idx: u32 = index.parse().map_err(|_| "Tab index must be a number")?;
             json!({"id": "r1", "action": "switch", "params": {"index": idx}})
         }
@@ -187,11 +187,11 @@ pub fn parse_args(args: Vec<String>) -> Result<(GlobalFlags, Value), String> {
         "cookies" => {
             match rest.get(1).map(|s| s.as_str()) {
                 Some("import") => {
-                    let path = rest.get(2).ok_or("Usage: cfox cookies import file.json")?;
+                    let path = rest.get(2).ok_or("Usage: camoufox-cli cookies import file.json")?;
                     json!({"id": "r1", "action": "cookies", "params": {"op": "import", "path": path}})
                 }
                 Some("export") => {
-                    let path = rest.get(2).ok_or("Usage: cfox cookies export file.json")?;
+                    let path = rest.get(2).ok_or("Usage: camoufox-cli cookies export file.json")?;
                     json!({"id": "r1", "action": "cookies", "params": {"op": "export", "path": path}})
                 }
                 _ => json!({"id": "r1", "action": "cookies", "params": {"op": "list"}}),
@@ -205,7 +205,7 @@ pub fn parse_args(args: Vec<String>) -> Result<(GlobalFlags, Value), String> {
 }
 
 const USAGE: &str = "\
-Usage: cfox [flags] <command> [args]
+Usage: camoufox-cli [flags] <command> [args]
 
 Navigation:
   open <url>              Navigate to URL

@@ -32,7 +32,7 @@ def _resolve_ref(manager: BrowserManager, ref_str: str):
     """Resolve a ref string to a (locator, entry) tuple, or raise."""
     entry = manager.refs.resolve(ref_str)
     if entry is None:
-        raise ValueError(f"Ref @{ref_str.lstrip('@')} not found. Run 'cfox snapshot' to refresh refs.")
+        raise ValueError(f"Ref @{ref_str.lstrip('@')} not found. Run 'camoufox-cli snapshot' to refresh refs.")
     page = manager.get_page()
     locator = page.get_by_role(entry.role, name=entry.name)
     if entry.nth > 0:

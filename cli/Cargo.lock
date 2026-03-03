@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "cfox"
+name = "camoufox-cli"
 version = "0.1.0"
 dependencies = [
  "libc",
