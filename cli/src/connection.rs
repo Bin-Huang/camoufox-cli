@@ -129,6 +129,21 @@ fn spawn_daemon(flags: &GlobalFlags) -> Result<(), String> {
     Err("Daemon did not start within 5 seconds".to_string())
 }
 
+/// List active sessions by scanning /tmp/cfox-*.sock files.
+pub fn list_sessions() -> Vec<String> {
+    let mut sessions = Vec::new();
+    if let Ok(entries) = std::fs::read_dir("/tmp") {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if let Some(session) = name.strip_prefix("cfox-").and_then(|s| s.strip_suffix(".sock")) {
+                sessions.push(session.to_string());
+            }
+        }
+    }
+    sessions.sort();
+    sessions
+}
+
 fn find_python() -> Result<String, String> {
     // Try python3 first, then python
     for name in &["python3", "python"] {
