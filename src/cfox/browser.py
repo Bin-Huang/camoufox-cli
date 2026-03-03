@@ -3,31 +3,86 @@
 from __future__ import annotations
 
 from camoufox.sync_api import Camoufox
-from playwright.sync_api import Page
+from playwright.sync_api import BrowserContext, Page
 
 from .refs import RefRegistry
 
 
 class BrowserManager:
-    def __init__(self):
+    def __init__(self, persistent: str | None = None):
         self._camoufox: Camoufox | None = None
-        self._browser = None
+        self._context: BrowserContext | None = None
         self._page: Page | None = None
         self.refs = RefRegistry()
         self._headless: bool = True
+        self._persistent = persistent
 
     def launch(self, headless: bool = True) -> None:
         if self._camoufox is not None:
             return
         self._headless = headless
-        self._camoufox = Camoufox(headless=headless)
-        self._browser = self._camoufox.__enter__()
-        self._page = self._browser.new_page()
+
+        kwargs: dict = {"headless": headless}
+        if self._persistent:
+            kwargs["persistent_context"] = True
+            kwargs["user_data_dir"] = self._persistent
+
+        self._camoufox = Camoufox(**kwargs)
+        result = self._camoufox.__enter__()
+
+        if self._persistent:
+            # persistent_context returns BrowserContext directly
+            self._context = result
+            pages = self._context.pages
+            self._page = pages[0] if pages else self._context.new_page()
+        else:
+            # Normal mode: result is Browser, new_page() creates default context + page
+            self._page = result.new_page()
+            self._context = self._page.context
 
     def get_page(self) -> Page:
         if self._page is None:
             raise RuntimeError("Browser not launched. Send 'open' command first.")
         return self._page
+
+    def get_context(self) -> BrowserContext:
+        if self._context is None:
+            raise RuntimeError("Browser not launched. Send 'open' command first.")
+        return self._context
+
+    def get_tabs(self) -> list[dict]:
+        ctx = self.get_context()
+        tabs = []
+        for i, p in enumerate(ctx.pages):
+            tabs.append({
+                "index": i,
+                "url": p.url,
+                "title": p.title(),
+                "active": p is self._page,
+            })
+        return tabs
+
+    def switch_to_tab(self, index: int) -> Page:
+        ctx = self.get_context()
+        pages = ctx.pages
+        if index < 0 or index >= len(pages):
+            raise IndexError(f"Tab index {index} out of range (0-{len(pages) - 1})")
+        self._page = pages[index]
+        self._page.bring_to_front()
+        return self._page
+
+    def close_current_tab(self) -> None:
+        ctx = self.get_context()
+        pages = ctx.pages
+        if len(pages) <= 1:
+            raise RuntimeError("Cannot close the last tab. Use 'close' to shut down the browser.")
+        current = self._page
+        # Switch to another tab before closing
+        idx = pages.index(current)
+        new_idx = idx - 1 if idx > 0 else 1
+        self._page = pages[new_idx]
+        self._page.bring_to_front()
+        current.close()
 
     def close(self) -> None:
         if self._camoufox is not None:
@@ -36,7 +91,7 @@ class BrowserManager:
             except Exception:
                 pass
             self._camoufox = None
-            self._browser = None
+            self._context = None
             self._page = None
 
     @property
