@@ -2,9 +2,7 @@
 
 > Under active development. Not ready for use yet.
 
-The missing [agent-browser](https://github.com/vercel-labs/agent-browser)-style CLI for [Camoufox](https://github.com/daijro/camoufox).
-
-Anti-detect browser automation for AI agents — through simple shell commands.
+The missing [Camoufox](https://github.com/daijro/camoufox) CLI for AI agents, inspired by [agent-browser](https://github.com/vercel-labs/agent-browser).
 
 ## Quick Look
 
