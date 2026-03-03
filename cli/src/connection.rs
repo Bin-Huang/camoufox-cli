@@ -82,6 +82,10 @@ fn spawn_daemon(flags: &GlobalFlags) -> Result<(), String> {
         cmd.arg("--headed");
     }
 
+    if let Some(ref path) = flags.persistent {
+        cmd.arg("--persistent").arg(path);
+    }
+
     // Set PYTHONPATH to include project src/
     if let Ok(exe) = std::env::current_exe() {
         // cli/target/debug/cfox -> project root is 3 levels up
