@@ -18,18 +18,31 @@ pub fn print_response(response: &Value, json_mode: bool) {
         std::process::exit(1);
     }
 
-    // Print data fields
     if let Some(data) = response.get("data") {
-        if let Some(snapshot) = data.get("snapshot").and_then(|v| v.as_str()) {
-            println!("{snapshot}");
-        } else if let Some(url) = data.get("url").and_then(|v| v.as_str()) {
-            let title = data.get("title").and_then(|v| v.as_str()).unwrap_or("");
-            println!("{title}");
-            println!("{url}");
+        // Single-value responses: snapshot, text, url, title, eval result
+        if let Some(v) = data.get("snapshot").and_then(|v| v.as_str()) {
+            println!("{v}");
+        } else if let Some(v) = data.get("text").and_then(|v| v.as_str()) {
+            println!("{v}");
+        } else if let Some(v) = data.get("result") {
+            // eval result — could be any JSON type
+            match v {
+                Value::String(s) => println!("{s}"),
+                Value::Null => println!("null"),
+                _ => println!("{v}"),
+            }
         } else if data.get("closed").is_some() {
-            // close command - silent success
+            // silent success
+        } else if let Some(url) = data.get("url").and_then(|v| v.as_str()) {
+            if let Some(title) = data.get("title").and_then(|v| v.as_str()) {
+                println!("{title}");
+            }
+            println!("{url}");
+        } else if let Some(title) = data.get("title").and_then(|v| v.as_str()) {
+            println!("{title}");
+        } else if data.as_object().map_or(false, |o| o.is_empty()) {
+            // empty data = silent success (back, forward, scroll, etc.)
         } else {
-            // Fallback: print the JSON data
             println!("{}", serde_json::to_string_pretty(data).unwrap());
         }
     }
