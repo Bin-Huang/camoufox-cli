@@ -1,4 +1,4 @@
-"""Entry point: python -m cfox.server"""
+"""Entry point: python -m camoufox_cli"""
 
 import argparse
 import sys
@@ -7,7 +7,7 @@ from .server import DaemonServer
 
 
 def main():
-    parser = argparse.ArgumentParser(description="cfox daemon server")
+    parser = argparse.ArgumentParser(description="camoufox-cli daemon server")
     parser.add_argument("--session", default="default", help="Session name")
     parser.add_argument("--headless", action="store_true", default=True, help="Run headless (default)")
     parser.add_argument("--headed", action="store_true", help="Show browser window")
@@ -24,7 +24,7 @@ def main():
         persistent=args.persistent,
     )
 
-    print(f"[cfox] Starting daemon session={args.session} headless={headless}", file=sys.stderr)
+    print(f"[camoufox-cli] Starting daemon session={args.session} headless={headless}", file=sys.stderr)
     server.start()
 
 

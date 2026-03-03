@@ -1,4 +1,4 @@
-"""Unix socket server for the cfox daemon."""
+"""Unix socket server for the camoufox-cli daemon."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ class DaemonServer:
         self.session = session
         self.headless = headless
         self.timeout = timeout  # idle timeout in seconds
-        self.socket_path = f"/tmp/cfox-{session}.sock"
-        self.pid_path = f"/tmp/cfox-{session}.pid"
+        self.socket_path = f"/tmp/camoufox-cli-{session}.sock"
+        self.pid_path = f"/tmp/camoufox-cli-{session}.pid"
         self.manager = BrowserManager(persistent=persistent)
         self._server_socket: socket.socket | None = None
         self._last_activity = time.time()
@@ -57,7 +57,7 @@ class DaemonServer:
                 try:
                     self._handle_connection(conn)
                 except Exception as e:
-                    print(f"[cfox] Connection error: {e}", file=sys.stderr)
+                    print(f"[camoufox-cli] Connection error: {e}", file=sys.stderr)
                 finally:
                     conn.close()
         finally:
@@ -94,7 +94,7 @@ class DaemonServer:
         while self._running:
             time.sleep(10)
             if time.time() - self._last_activity > self.timeout:
-                print(f"[cfox] Idle timeout ({self.timeout}s), shutting down", file=sys.stderr)
+                print(f"[camoufox-cli] Idle timeout ({self.timeout}s), shutting down", file=sys.stderr)
                 self._running = False
                 # Nudge the accept() loop
                 try:
@@ -126,7 +126,7 @@ class DaemonServer:
                     pid = int(open(self.pid_path).read().strip())
                     os.kill(pid, 0)
                     # Process exists — abort
-                    print(f"[cfox] Daemon already running (pid {pid})", file=sys.stderr)
+                    print(f"[camoufox-cli] Daemon already running (pid {pid})", file=sys.stderr)
                     sys.exit(1)
                 except (ProcessLookupError, ValueError):
                     pass  # stale pid, clean up

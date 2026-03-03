@@ -12,7 +12,7 @@ use crate::commands::GlobalFlags;
 
 /// Get the socket path for a session.
 pub fn get_socket_path(session: &str) -> PathBuf {
-    PathBuf::from(format!("/tmp/cfox-{session}.sock"))
+    PathBuf::from(format!("/tmp/camoufox-cli-{session}.sock"))
 }
 
 /// Ensure daemon is running, connect, send command, return response.
@@ -68,11 +68,10 @@ fn try_send(socket_path: &PathBuf, command: &Value) -> Result<Value, String> {
 }
 
 fn spawn_daemon(flags: &GlobalFlags) -> Result<(), String> {
-    // Find python3 with cfox module available
     let python = find_python()?;
 
     let mut cmd = Command::new(&python);
-    cmd.args(["-m", "cfox"])
+    cmd.args(["-m", "camoufox_cli"])
         .arg("--session")
         .arg(&flags.session)
         .arg("--timeout")
@@ -88,7 +87,6 @@ fn spawn_daemon(flags: &GlobalFlags) -> Result<(), String> {
 
     // Set PYTHONPATH to include project src/
     if let Ok(exe) = std::env::current_exe() {
-        // cli/target/debug/cfox -> project root is 3 levels up
         if let Some(project_root) = exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent()).and_then(|p| p.parent()) {
             let src_path = project_root.join("src");
             if src_path.exists() {
@@ -129,13 +127,13 @@ fn spawn_daemon(flags: &GlobalFlags) -> Result<(), String> {
     Err("Daemon did not start within 5 seconds".to_string())
 }
 
-/// List active sessions by scanning /tmp/cfox-*.sock files.
+/// List active sessions by scanning /tmp/camoufox-cli-*.sock files.
 pub fn list_sessions() -> Vec<String> {
     let mut sessions = Vec::new();
     if let Ok(entries) = std::fs::read_dir("/tmp") {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
-            if let Some(session) = name.strip_prefix("cfox-").and_then(|s| s.strip_suffix(".sock")) {
+            if let Some(session) = name.strip_prefix("camoufox-cli-").and_then(|s| s.strip_suffix(".sock")) {
                 sessions.push(session.to_string());
             }
         }
