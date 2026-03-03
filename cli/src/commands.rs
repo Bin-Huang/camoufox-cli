@@ -6,6 +6,7 @@ pub struct GlobalFlags {
     pub headed: bool,
     pub timeout: u32,
     pub json_output: bool,
+    pub persistent: Option<String>,
 }
 
 impl Default for GlobalFlags {
@@ -15,6 +16,7 @@ impl Default for GlobalFlags {
             headed: false,
             timeout: 1800,
             json_output: false,
+            persistent: None,
         }
     }
 }
@@ -42,6 +44,10 @@ pub fn parse_args(args: Vec<String>) -> Result<(GlobalFlags, Value), String> {
                     .map_err(|_| "--timeout must be a number")?;
             }
             "--json" => flags.json_output = true,
+            "--persistent" => {
+                i += 1;
+                flags.persistent = Some(args.get(i).ok_or("--persistent requires a path")?.clone());
+            }
             _ => rest.push(args[i].clone()),
         }
         i += 1;
@@ -63,7 +69,10 @@ pub fn parse_args(args: Vec<String>) -> Result<(GlobalFlags, Value), String> {
         "reload" => json!({"id": "r1", "action": "reload", "params": {}}),
         "url" => json!({"id": "r1", "action": "url", "params": {}}),
         "title" => json!({"id": "r1", "action": "title", "params": {}}),
-        "close" => json!({"id": "r1", "action": "close", "params": {}}),
+        "close" => {
+            let all = rest.iter().any(|a| a == "--all");
+            json!({"id": "r1", "action": "close", "params": {"all": all}})
+        }
 
         // --- Snapshot ---
         "snapshot" => {
@@ -205,7 +214,7 @@ Navigation:
   reload                  Reload page
   url                     Print current URL
   title                   Print page title
-  close                   Close browser and daemon
+  close [--all]           Close browser and daemon (--all: all sessions)
 
 Snapshot:
   snapshot [-i] [-s sel]  Aria tree (-i interactive, -s scoped)
@@ -242,4 +251,5 @@ Flags:
   --session <name>     Session name (default: \"default\")
   --headed             Show browser window
   --timeout <secs>     Daemon idle timeout (default: 1800)
-  --json               Output as JSON";
+  --json               Output as JSON
+  --persistent <path>  Use persistent browser profile";
