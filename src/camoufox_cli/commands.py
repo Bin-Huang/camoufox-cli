@@ -58,17 +58,19 @@ def _cmd_open(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 
 
 def _cmd_back(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    manager.get_page().go_back()
+    manager.get_page().go_back(wait_until="domcontentloaded")
     return ok_response(cmd_id)
 
 
 def _cmd_forward(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    manager.get_page().go_forward()
+    manager.get_page().go_forward(wait_until="domcontentloaded")
     return ok_response(cmd_id)
 
 
 def _cmd_reload(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    manager.get_page().reload()
+    page = manager.get_page()
+    page.evaluate("location.reload()")
+    page.wait_for_load_state("domcontentloaded")
     return ok_response(cmd_id)
 
 
