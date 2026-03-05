@@ -3,10 +3,26 @@ name = "camoufox-cli"
 version = "0.1.0"
 description = "Anti-detect browser CLI for AI agents, powered by Camoufox"
 requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Bin Huang" }]
+readme = "README.md"
+keywords = ["browser", "automation", "anti-detect", "camoufox", "ai-agent", "headless"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Topic :: Internet :: WWW/HTTP :: Browsers",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "camoufox[geoip]",
     "playwright",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Bin-Huang/camoufox-cli"
+Repository = "https://github.com/Bin-Huang/camoufox-cli"
+Issues = "https://github.com/Bin-Huang/camoufox-cli/issues"
 
 [project.scripts]
 camoufox-cli = "camoufox_cli.cli:main"
