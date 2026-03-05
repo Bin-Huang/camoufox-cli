@@ -123,7 +123,8 @@ class DaemonServer:
             # Check if another daemon is using it
             if os.path.exists(self.pid_path):
                 try:
-                    pid = int(open(self.pid_path).read().strip())
+                    with open(self.pid_path) as f:
+                        pid = int(f.read().strip())
                     os.kill(pid, 0)
                     # Process exists — abort
                     print(f"[camoufox-cli] Daemon already running (pid {pid})", file=sys.stderr)
