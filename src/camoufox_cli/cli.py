@@ -84,16 +84,25 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
     while i < len(args):
         if args[i] == "--session":
             i += 1
+            if i >= len(args):
+                print("Error: --session requires a value", file=sys.stderr)
+                sys.exit(1)
             flags["session"] = args[i]
         elif args[i] == "--headed":
             flags["headed"] = True
         elif args[i] == "--timeout":
             i += 1
+            if i >= len(args):
+                print("Error: --timeout requires a value", file=sys.stderr)
+                sys.exit(1)
             flags["timeout"] = int(args[i])
         elif args[i] == "--json":
             flags["json"] = True
         elif args[i] == "--persistent":
             i += 1
+            if i >= len(args):
+                print("Error: --persistent requires a value", file=sys.stderr)
+                sys.exit(1)
             flags["persistent"] = args[i]
         else:
             rest.append(args[i])

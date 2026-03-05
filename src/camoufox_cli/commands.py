@@ -240,7 +240,7 @@ def _cmd_wait(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     elif "url" in params:
         page.wait_for_url(params["url"])
     else:
-        return error_response(params.get("id", "?"), "wait requires ms, ref, selector, or url parameter")
+        return error_response(cmd_id, "wait requires ms, ref, selector, or url parameter")
 
     return ok_response(cmd_id)
 
