@@ -55,23 +55,29 @@ def _cmd_open(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 
     page = manager.get_page()
     page.goto(url, wait_until="domcontentloaded")
+    manager.push_history(page.url)
     return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 
 
 def _cmd_back(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    manager.get_page().go_back(wait_until="domcontentloaded")
-    return ok_response(cmd_id)
+    url = manager.go_back()
+    if url is None:
+        return error_response(cmd_id, "No previous page in history")
+    page = manager.get_page()
+    return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 
 
 def _cmd_forward(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    manager.get_page().go_forward(wait_until="domcontentloaded")
-    return ok_response(cmd_id)
+    url = manager.go_forward()
+    if url is None:
+        return error_response(cmd_id, "No next page in history")
+    page = manager.get_page()
+    return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 
 
 def _cmd_reload(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     page = manager.get_page()
-    page.evaluate("location.reload()")
-    page.wait_for_load_state("domcontentloaded")
+    page.goto(page.url, wait_until="domcontentloaded")
     return ok_response(cmd_id)
 
 
@@ -111,7 +117,15 @@ def _cmd_click(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     ref_str = params.get("ref", "")
     if not ref_str:
         return error_response(cmd_id, "Missing 'ref' parameter")
-    _resolve_ref(manager, ref_str).click()
+    locator = _resolve_ref(manager, ref_str)
+    # Camoufox ignores target="_blank" clicks via Playwright's .click(),
+    # causing silent no-ops. Remove target so links navigate in current tab.
+    locator.evaluate("el => { if (el.tagName === 'A') el.removeAttribute('target') }")
+    url_before = manager.get_page().url
+    locator.click()
+    url_after = manager.get_page().url
+    if url_after != url_before:
+        manager.push_history(url_after)
     return ok_response(cmd_id)
 
 

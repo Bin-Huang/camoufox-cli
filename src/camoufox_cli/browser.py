@@ -16,6 +16,10 @@ class BrowserManager:
         self.refs = RefRegistry()
         self._headless: bool = True
         self._persistent = persistent
+        # Camoufox spoofs history API for anti-fingerprinting,
+        # so we track navigation history ourselves.
+        self._history: list[str] = []
+        self._history_index: int = -1
 
     def launch(self, headless: bool = True) -> None:
         if self._camoufox is not None:
@@ -83,6 +87,31 @@ class BrowserManager:
         self._page = pages[new_idx]
         self._page.bring_to_front()
         current.close()
+
+    def push_history(self, url: str) -> None:
+        """Record a URL in our navigation history."""
+        # Truncate forward history when navigating to a new page
+        self._history = self._history[:self._history_index + 1]
+        self._history.append(url)
+        self._history_index = len(self._history) - 1
+
+    def go_back(self) -> str | None:
+        """Go back in history. Returns the URL or None if at start."""
+        if self._history_index <= 0:
+            return None
+        self._history_index -= 1
+        url = self._history[self._history_index]
+        self.get_page().goto(url, wait_until="domcontentloaded")
+        return url
+
+    def go_forward(self) -> str | None:
+        """Go forward in history. Returns the URL or None if at end."""
+        if self._history_index >= len(self._history) - 1:
+            return None
+        self._history_index += 1
+        url = self._history[self._history_index]
+        self.get_page().goto(url, wait_until="domcontentloaded")
+        return url
 
     def close(self) -> None:
         if self._camoufox is not None:
