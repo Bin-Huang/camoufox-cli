@@ -1,6 +1,3 @@
-# Rust
-cli/target/
-
 # Python
 __pycache__/
 *.pyc
@@ -9,6 +6,7 @@ __pycache__/
 dist/
 build/
 .venv/
+.mypy_cache/
 
 # Node
 node_modules/
