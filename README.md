@@ -1,8 +1,10 @@
 # camoufox-cli
 
-Anti-detect browser CLI for AI agents, powered by [Camoufox](https://github.com/daijro/camoufox).
+Anti-detect headless browser automation CLI for AI agents, powered by [Camoufox](https://github.com/daijro/camoufox).
 
-Camoufox has C++-level fingerprint spoofing (`navigator.webdriver=false`, randomized canvas/WebGL/audio, real plugins) but only exposes a Python API. This CLI wraps it into a simple command interface optimized for AI agent tool calls — snapshot the accessibility tree, interact by ref, repeat.
+[Camoufox](https://github.com/daijro/camoufox) is a stealthy Firefox fork with C++-level fingerprint spoofing. It defeats bot detection by masking `navigator.webdriver`, randomizing canvas/WebGL/audio fingerprints, and injecting real browser plugins. However, Camoufox only provides a Python API. AI agents like OpenClaw or Claude Code would need to generate Python glue code to use it, which is fragile, wastes tokens, and distracts the agent from its actual task.
+
+**camoufox-cli** bridges this gap by wrapping Camoufox into a stateless CLI. A background daemon manages the browser instance and ref registry, so each command is a simple shell call: snapshot the accessibility tree, interact by ref, repeat. Any AI agent that can invoke shell commands can use Camoufox, no Python glue code generation needed.
 
 ## Install
 
