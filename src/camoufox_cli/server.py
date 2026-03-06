@@ -129,8 +129,8 @@ class DaemonServer:
                     # Process exists — abort
                     print(f"[camoufox-cli] Daemon already running (pid {pid})", file=sys.stderr)
                     sys.exit(1)
-                except (ProcessLookupError, ValueError):
-                    pass  # stale pid, clean up
+                except (ProcessLookupError, PermissionError, ValueError):
+                    pass  # stale pid or other user's process, clean up
             os.unlink(self.socket_path)
 
     def _write_pid(self) -> None:

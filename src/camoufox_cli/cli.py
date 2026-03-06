@@ -287,8 +287,6 @@ def print_response(response: dict, json_mode: bool) -> None:
         print(data["url"])
     elif "title" in data:
         print(data["title"])
-    elif not data:
-        pass  # silent success
     else:
         print(json.dumps(data, indent=2, ensure_ascii=False))
 

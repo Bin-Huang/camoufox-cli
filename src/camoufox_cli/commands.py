@@ -132,14 +132,14 @@ def _cmd_click(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     page = manager.get_page()
     url_before = page.url
 
-    # For <a> elements: navigate directly via page.goto() to avoid two Camoufox issues:
+    # Navigate via page.goto() for links, el.click() for other elements.
+    # This avoids two Camoufox issues:
     # 1. Playwright's .click() times out when sticky headers/overlays intercept pointer events
     # 2. Camoufox ignores target="_blank" clicks (both .click() and el.click() silently fail)
-    # For non-<a> elements: use el.click() to dispatch the click directly, avoiding
-    # Playwright's actionability checks that timeout on overlapping elements.
-    link_info = locator.evaluate("el => el.tagName === 'A' ? el.href : null")
-    if link_info:
-        page.goto(link_info, wait_until="domcontentloaded")
+    # Walk up the DOM to find <a> ancestor since the locator may resolve to a child element.
+    link_href = locator.evaluate("el => { while (el) { if (el.tagName === 'A') return el.href; el = el.parentElement; } return null; }")
+    if link_href:
+        page.goto(link_href, wait_until="domcontentloaded")
     else:
         locator.evaluate("el => el.click()")
 
@@ -182,9 +182,9 @@ def _cmd_check(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
         return error_response(cmd_id, "Missing 'ref' parameter")
     locator = _resolve_ref(manager, ref_str)
     if locator.is_checked():
-        locator.uncheck()
+        locator.uncheck(force=True)
     else:
-        locator.check()
+        locator.check(force=True)
     return ok_response(cmd_id)
 
 
@@ -192,7 +192,7 @@ def _cmd_hover(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     ref_str = params.get("ref", "")
     if not ref_str:
         return error_response(cmd_id, "Missing 'ref' parameter")
-    _resolve_ref(manager, ref_str).hover()
+    _resolve_ref(manager, ref_str).hover(force=True)
     return ok_response(cmd_id)
 
 
