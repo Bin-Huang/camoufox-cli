@@ -53,8 +53,19 @@ def _cmd_open(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     if not manager.is_running:
         manager.launch(headless=params.get("headless", True))
 
-    page = manager.get_page()
-    page.goto(url, wait_until="domcontentloaded")
+    try:
+        page = manager.get_page()
+        page.goto(url, wait_until="domcontentloaded")
+    except Exception as e:
+        if "has been closed" in str(e):
+            # Browser crashed or was closed externally — relaunch
+            manager.close()
+            manager.launch(headless=params.get("headless", True))
+            page = manager.get_page()
+            page.goto(url, wait_until="domcontentloaded")
+        else:
+            raise
+
     manager.push_history(page.url)
     return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 

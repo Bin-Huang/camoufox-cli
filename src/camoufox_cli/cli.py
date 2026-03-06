@@ -59,8 +59,21 @@ def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | Non
 
 def ensure_daemon(session: str, headed: bool, timeout: int, persistent: str | None) -> None:
     sock_path = get_socket_path(session)
-    if not os.path.exists(sock_path):
-        spawn_daemon(session, headed, timeout, persistent)
+    if os.path.exists(sock_path):
+        # Verify daemon is actually alive by trying to connect
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(2)
+            s.connect(sock_path)
+            s.close()
+            return
+        except (ConnectionRefusedError, OSError):
+            # Stale socket from a dead daemon — clean up
+            try:
+                os.unlink(sock_path)
+            except FileNotFoundError:
+                pass
+    spawn_daemon(session, headed, timeout, persistent)
 
 
 def list_sessions() -> list[str]:
