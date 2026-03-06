@@ -1,4 +1,13 @@
-.PHONY: build publish clean
+.PHONY: test test-unit test-integration build publish clean
+
+test:
+	python -m pytest tests/ -v
+
+test-unit:
+	python -m pytest tests/ -v -m "not integration"
+
+test-integration:
+	python -m pytest tests/ -v -m integration
 
 build: clean
 	python -m build

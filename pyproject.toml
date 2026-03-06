@@ -33,3 +33,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/camoufox_cli"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that launch a real browser (slow, requires camoufox)",
+]
