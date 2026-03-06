@@ -118,12 +118,21 @@ def _cmd_click(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     if not ref_str:
         return error_response(cmd_id, "Missing 'ref' parameter")
     locator = _resolve_ref(manager, ref_str)
-    # Camoufox ignores target="_blank" clicks via Playwright's .click(),
-    # causing silent no-ops. Remove target so links navigate in current tab.
-    locator.evaluate("el => { if (el.tagName === 'A') el.removeAttribute('target') }")
-    url_before = manager.get_page().url
-    locator.click()
-    url_after = manager.get_page().url
+    page = manager.get_page()
+    url_before = page.url
+
+    # For <a> elements: navigate directly via page.goto() to avoid two Camoufox issues:
+    # 1. Playwright's .click() times out when sticky headers/overlays intercept pointer events
+    # 2. Camoufox ignores target="_blank" clicks (both .click() and el.click() silently fail)
+    # For non-<a> elements: use el.click() to dispatch the click directly, avoiding
+    # Playwright's actionability checks that timeout on overlapping elements.
+    link_info = locator.evaluate("el => el.tagName === 'A' ? el.href : null")
+    if link_info:
+        page.goto(link_info, wait_until="domcontentloaded")
+    else:
+        locator.evaluate("el => el.click()")
+
+    url_after = page.url
     if url_after != url_before:
         manager.push_history(url_after)
     return ok_response(cmd_id)
