@@ -1,9 +1,13 @@
 """Tests for command dispatch and execution logic."""
 
+import os
+
 import pytest
 
 from camoufox_cli.commands import execute
 from camoufox_cli.browser import BrowserManager
+
+FIXTURE_URL = "file://" + os.path.join(os.path.dirname(__file__), "fixture.html")
 
 
 class TestDispatch:
@@ -360,3 +364,193 @@ class TestBrowserIntegration:
             "params": {"url": "https://example.com", "headless": True},
         })
         assert resp["success"] is True
+
+    @pytest.mark.integration
+    def test_history_resets_after_close(self):
+        """After close + reopen, back should fail (history cleared)."""
+        execute(self.manager, {
+            "id": "r1", "action": "open",
+            "params": {"url": "https://example.com", "headless": True},
+        })
+        execute(self.manager, {"id": "r2", "action": "close", "params": {}})
+        execute(self.manager, {
+            "id": "r3", "action": "open",
+            "params": {"url": "https://example.com", "headless": True},
+        })
+        resp = execute(self.manager, {"id": "r4", "action": "back", "params": {}})
+        assert resp["success"] is False
+
+
+class TestFixtureIntegration:
+    """Integration tests using local HTML fixture (no network needed)."""
+
+    @pytest.fixture(autouse=True)
+    def setup_browser(self):
+        self.manager = BrowserManager()
+        execute(self.manager, {
+            "id": "r0", "action": "open",
+            "params": {"url": FIXTURE_URL, "headless": True},
+        })
+        yield
+        self.manager.close()
+
+    @pytest.mark.integration
+    def test_fill(self):
+        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        # Find the textbox ref
+        entry = next(e for e in self.manager.refs._entries.values() if e.role == "textbox")
+        resp = execute(self.manager, {
+            "id": "r2", "action": "fill",
+            "params": {"ref": f"@{entry.ref}", "text": "Alice"},
+        })
+        assert resp["success"] is True
+        # Verify value was set
+        resp = execute(self.manager, {
+            "id": "r3", "action": "eval",
+            "params": {"expression": "document.getElementById('name').value"},
+        })
+        assert resp["data"]["result"] == "Alice"
+
+    @pytest.mark.integration
+    def test_type(self):
+        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(e for e in self.manager.refs._entries.values() if e.role == "textbox")
+        resp = execute(self.manager, {
+            "id": "r2", "action": "type",
+            "params": {"ref": f"@{entry.ref}", "text": "Bob"},
+        })
+        assert resp["success"] is True
+
+    @pytest.mark.integration
+    def test_select(self):
+        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(e for e in self.manager.refs._entries.values() if e.role == "combobox")
+        resp = execute(self.manager, {
+            "id": "r2", "action": "select",
+            "params": {"ref": f"@{entry.ref}", "value": "Blue"},
+        })
+        assert resp["success"] is True
+        resp = execute(self.manager, {
+            "id": "r3", "action": "eval",
+            "params": {"expression": "document.getElementById('color').value"},
+        })
+        assert resp["data"]["result"] == "blue"
+
+    @pytest.mark.integration
+    def test_check_toggle(self):
+        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(e for e in self.manager.refs._entries.values() if e.role == "checkbox")
+        ref = f"@{entry.ref}"
+        # Check
+        resp = execute(self.manager, {"id": "r2", "action": "check", "params": {"ref": ref}})
+        assert resp["success"] is True
+        resp = execute(self.manager, {
+            "id": "r3", "action": "eval",
+            "params": {"expression": "document.getElementById('agree').checked"},
+        })
+        assert resp["data"]["result"] is True
+        # Uncheck
+        resp = execute(self.manager, {"id": "r4", "action": "check", "params": {"ref": ref}})
+        assert resp["success"] is True
+        resp = execute(self.manager, {
+            "id": "r5", "action": "eval",
+            "params": {"expression": "document.getElementById('agree').checked"},
+        })
+        assert resp["data"]["result"] is False
+
+    @pytest.mark.integration
+    def test_hover(self):
+        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(e for e in self.manager.refs._entries.values() if e.role == "button")
+        resp = execute(self.manager, {
+            "id": "r2", "action": "hover",
+            "params": {"ref": f"@{entry.ref}"},
+        })
+        assert resp["success"] is True
+
+    @pytest.mark.integration
+    def test_click_button(self):
+        """Click a non-link button and verify side effect."""
+        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(e for e in self.manager.refs._entries.values() if e.role == "button")
+        resp = execute(self.manager, {
+            "id": "r2", "action": "click",
+            "params": {"ref": f"@{entry.ref}"},
+        })
+        assert resp["success"] is True
+        resp = execute(self.manager, {
+            "id": "r3", "action": "eval",
+            "params": {"expression": "document.getElementById('output').textContent"},
+        })
+        assert resp["data"]["result"] == "clicked"
+
+    @pytest.mark.integration
+    def test_press(self):
+        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(e for e in self.manager.refs._entries.values() if e.role == "textbox")
+        # Focus the textbox first
+        execute(self.manager, {"id": "r2", "action": "click", "params": {"ref": f"@{entry.ref}"}})
+        resp = execute(self.manager, {"id": "r3", "action": "press", "params": {"key": "Tab"}})
+        assert resp["success"] is True
+
+    @pytest.mark.integration
+    def test_text_by_ref(self):
+        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(e for e in self.manager.refs._entries.values() if e.role == "heading")
+        resp = execute(self.manager, {
+            "id": "r2", "action": "text",
+            "params": {"target": f"@{entry.ref}"},
+        })
+        assert resp["success"] is True
+        assert "Test Page" in resp["data"]["text"]
+
+    @pytest.mark.integration
+    def test_text_by_selector(self):
+        resp = execute(self.manager, {
+            "id": "r1", "action": "text",
+            "params": {"target": "#output"},
+        })
+        assert resp["success"] is True
+        assert resp["data"]["text"] == "ready"
+
+    @pytest.mark.integration
+    def test_cookies_export_import(self, tmp_path):
+        cookie_file = str(tmp_path / "cookies.json")
+        # Export
+        resp = execute(self.manager, {
+            "id": "r1", "action": "cookies",
+            "params": {"op": "export", "path": cookie_file},
+        })
+        assert resp["success"] is True
+        assert os.path.exists(cookie_file)
+        # Import
+        resp = execute(self.manager, {
+            "id": "r2", "action": "cookies",
+            "params": {"op": "import", "path": cookie_file},
+        })
+        assert resp["success"] is True
+
+    @pytest.mark.integration
+    def test_snapshot_scoped(self):
+        resp = execute(self.manager, {
+            "id": "r1", "action": "snapshot",
+            "params": {"selector": "form"},
+        })
+        assert resp["success"] is True
+        assert "textbox" in resp["data"]["snapshot"]
+        # heading is outside form, should not appear
+        assert "Test Page" not in resp["data"]["snapshot"]
+
+    @pytest.mark.integration
+    def test_wait_selector(self):
+        resp = execute(self.manager, {
+            "id": "r1", "action": "wait",
+            "params": {"selector": "#output"},
+        })
+        assert resp["success"] is True
+
+    @pytest.mark.integration
+    def test_forward_at_end(self):
+        resp = execute(self.manager, {"id": "r1", "action": "forward", "params": {}})
+        assert resp["success"] is False
+        assert "no next" in resp["error"].lower()

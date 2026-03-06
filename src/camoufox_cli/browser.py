@@ -122,6 +122,8 @@ class BrowserManager:
             self._camoufox = None
             self._context = None
             self._page = None
+            self._history.clear()
+            self._history_index = -1
 
     @property
     def is_running(self) -> bool:
