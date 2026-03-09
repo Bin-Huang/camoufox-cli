@@ -134,6 +134,14 @@ camoufox-cli cookies export file.json     # Export cookies
 --persistent <path>    Use persistent browser profile directory
 ```
 
+## Agent Skill
+
+This project includes an [agent skill](https://github.com/vercel-labs/skills) so AI agents (OpenClaw, Claude Code, Cursor, Codex, etc.) automatically use camoufox-cli for anti-detect browser tasks.
+
+```bash
+npx skills add Bin-Huang/camoufox-cli
+```
+
 ## Architecture
 
 ```

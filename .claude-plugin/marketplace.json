@@ -1,0 +1,20 @@
+{
+  "name": "camoufox-cli",
+  "owner": {
+    "name": "Benn Huang"
+  },
+  "metadata": {
+    "description": "Anti-detect browser automation CLI for AI agents, powered by Camoufox",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "camoufox-cli",
+      "description": "Anti-detect browser automation skill with fingerprint spoofing for AI agents",
+      "source": "./",
+      "skills": [
+        "./skills/camoufox-cli"
+      ]
+    }
+  ]
+}
