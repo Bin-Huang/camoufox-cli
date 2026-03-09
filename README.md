@@ -26,6 +26,14 @@ On Linux, install system dependencies with:
 camoufox-cli install --with-deps
 ```
 
+### Agent Skill
+
+Install as an [agent skill](https://github.com/vercel-labs/skills) so AI agents (OpenClaw, Claude Code, Cursor, Codex, etc.) automatically use camoufox-cli for anti-detect browser tasks:
+
+```bash
+npx skills add Bin-Huang/camoufox-cli
+```
+
 ## Quick Start
 
 ```bash
@@ -132,14 +140,6 @@ camoufox-cli cookies export file.json     # Export cookies
 --timeout <seconds>    Daemon idle timeout (default: 1800)
 --json                 Output as JSON
 --persistent <path>    Use persistent browser profile directory
-```
-
-## Agent Skill
-
-This project includes an [agent skill](https://github.com/vercel-labs/skills) so AI agents (OpenClaw, Claude Code, Cursor, Codex, etc.) automatically use camoufox-cli for anti-detect browser tasks.
-
-```bash
-npx skills add Bin-Huang/camoufox-cli
 ```
 
 ## Architecture
