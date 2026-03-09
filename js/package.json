@@ -1,6 +1,6 @@
 {
   "name": "camoufox-cli",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Anti-detect headless browser automation CLI for AI agents, powered by Camoufox",
   "type": "module",
   "bin": {
