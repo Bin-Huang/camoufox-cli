@@ -1,0 +1,378 @@
+#!/usr/bin/env node
+/** CLI client: parses args, starts daemon if needed, sends command via Unix socket. */
+
+import * as net from "node:net";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const SOCKET_PREFIX = "/tmp/camoufox-cli-";
+
+function getSocketPath(session: string): string {
+  return `${SOCKET_PREFIX}${session}.sock`;
+}
+
+function sendCommand(sockPath: string, command: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const client = net.createConnection(sockPath, () => {
+      client.end(JSON.stringify(command) + "\n");
+    });
+
+    let data = "";
+    client.on("data", (chunk) => { data += chunk.toString(); });
+    client.on("end", () => {
+      try { resolve(JSON.parse(data)); }
+      catch (e) { reject(new Error(`Invalid response: ${data}`)); }
+    });
+    client.on("error", reject);
+  });
+}
+
+function spawnDaemon(session: string, headed: boolean, timeout: number, persistent: string | null): Promise<void> {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const daemonPath = path.join(__dirname, "daemon.js");
+
+  const args = ["--session", session, "--timeout", String(timeout)];
+  if (headed) args.push("--headed");
+  if (persistent) args.push("--persistent", persistent);
+
+  spawn("node", [daemonPath, ...args], {
+    detached: true,
+    stdio: "ignore",
+  }).unref();
+
+  const sockPath = getSocketPath(session);
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const check = () => {
+      if (fs.existsSync(sockPath)) return resolve();
+      attempts++;
+      if (attempts >= 50) return reject(new Error("Daemon did not start within 5 seconds"));
+      setTimeout(check, 100);
+    };
+    check();
+  });
+}
+
+async function ensureDaemon(session: string, headed: boolean, timeout: number, persistent: string | null): Promise<void> {
+  const sockPath = getSocketPath(session);
+  if (fs.existsSync(sockPath)) {
+    // Verify daemon is alive
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const s = net.createConnection(sockPath, () => { s.destroy(); resolve(); });
+        s.on("error", reject);
+        s.setTimeout(2000, () => { s.destroy(); reject(new Error("timeout")); });
+      });
+      return;
+    } catch {
+      try { fs.unlinkSync(sockPath); } catch {}
+    }
+  }
+  await spawnDaemon(session, headed, timeout, persistent);
+}
+
+function listSessions(): string[] {
+  const sessions: string[] = [];
+  try {
+    for (const name of fs.readdirSync("/tmp")) {
+      if (name.startsWith("camoufox-cli-") && name.endsWith(".sock")) {
+        sessions.push(name.slice("camoufox-cli-".length, -".sock".length));
+      }
+    }
+  } catch {}
+  return sessions.sort();
+}
+
+// ---------------------------------------------------------------------------
+// Arg parsing
+// ---------------------------------------------------------------------------
+
+interface Flags {
+  session: string;
+  headed: boolean;
+  timeout: number;
+  json: boolean;
+  persistent: string | null;
+}
+
+function parseArgs(argv: string[]): { flags: Flags; command: Record<string, unknown> } {
+  const flags: Flags = { session: "default", headed: false, timeout: 1800, json: false, persistent: null };
+  const rest: string[] = [];
+
+  let i = 0;
+  while (i < argv.length) {
+    switch (argv[i]) {
+      case "--session":
+        flags.session = argv[++i] ?? (process.stderr.write("Error: --session requires a value\n"), process.exit(1), "");
+        break;
+      case "--headed":
+        flags.headed = true;
+        break;
+      case "--timeout":
+        flags.timeout = parseInt(argv[++i] ?? "1800", 10);
+        break;
+      case "--json":
+        flags.json = true;
+        break;
+      case "--persistent":
+        flags.persistent = argv[++i] ?? null;
+        break;
+      default:
+        rest.push(argv[i]);
+    }
+    i++;
+  }
+
+  if (rest.length === 0) {
+    process.stderr.write(USAGE + "\n");
+    process.exit(1);
+  }
+
+  const command = buildCommand(rest[0], rest);
+  return { flags, command };
+}
+
+function require_(args: string[], idx: number, usage: string): string {
+  if (idx >= args.length) {
+    process.stderr.write(usage + "\n");
+    process.exit(1);
+  }
+  return args[idx];
+}
+
+function buildCommand(action: string, rest: string[]): Record<string, unknown> {
+  switch (action) {
+    case "open":
+      return { id: "r1", action: "open", params: { url: require_(rest, 1, "Usage: camoufox-cli open <url>") } };
+    case "back":
+      return { id: "r1", action: "back", params: {} };
+    case "forward":
+      return { id: "r1", action: "forward", params: {} };
+    case "reload":
+      return { id: "r1", action: "reload", params: {} };
+    case "url":
+      return { id: "r1", action: "url", params: {} };
+    case "title":
+      return { id: "r1", action: "title", params: {} };
+    case "close":
+      return { id: "r1", action: "close", params: { all: rest.includes("--all") } };
+
+    case "snapshot": {
+      const interactive = rest.includes("-i");
+      let selector: string | undefined;
+      const sIdx = rest.indexOf("-s");
+      if (sIdx >= 0) selector = require_(rest, sIdx + 1, "Usage: camoufox-cli snapshot -s <selector>");
+      const params: Record<string, unknown> = { interactive };
+      if (selector) params.selector = selector;
+      return { id: "r1", action: "snapshot", params };
+    }
+
+    case "click":
+      return { id: "r1", action: "click", params: { ref: require_(rest, 1, "Usage: camoufox-cli click @e1") } };
+    case "fill":
+      return { id: "r1", action: "fill", params: { ref: require_(rest, 1, 'Usage: camoufox-cli fill @e1 "text"'), text: require_(rest, 2, 'Usage: camoufox-cli fill @e1 "text"') } };
+    case "type":
+      return { id: "r1", action: "type", params: { ref: require_(rest, 1, 'Usage: camoufox-cli type @e1 "text"'), text: require_(rest, 2, 'Usage: camoufox-cli type @e1 "text"') } };
+    case "select":
+      return { id: "r1", action: "select", params: { ref: require_(rest, 1, 'Usage: camoufox-cli select @e1 "option"'), value: require_(rest, 2, 'Usage: camoufox-cli select @e1 "option"') } };
+    case "check":
+      return { id: "r1", action: "check", params: { ref: require_(rest, 1, "Usage: camoufox-cli check @e1") } };
+    case "hover":
+      return { id: "r1", action: "hover", params: { ref: require_(rest, 1, "Usage: camoufox-cli hover @e1") } };
+    case "press":
+      return { id: "r1", action: "press", params: { key: require_(rest, 1, "Usage: camoufox-cli press Enter") } };
+
+    case "text":
+      return { id: "r1", action: "text", params: { target: require_(rest, 1, "Usage: camoufox-cli text @e1") } };
+    case "eval":
+      return { id: "r1", action: "eval", params: { expression: require_(rest, 1, 'Usage: camoufox-cli eval "document.title"') } };
+    case "screenshot": {
+      const params: Record<string, unknown> = {};
+      for (const arg of rest.slice(1)) {
+        if (arg === "--full") params.full_page = true;
+        else params.path = arg;
+      }
+      return { id: "r1", action: "screenshot", params };
+    }
+    case "pdf":
+      return { id: "r1", action: "pdf", params: { path: require_(rest, 1, "Usage: camoufox-cli pdf output.pdf") } };
+
+    case "scroll":
+      return { id: "r1", action: "scroll", params: { direction: require_(rest, 1, "Usage: camoufox-cli scroll down [px]"), amount: rest.length > 2 ? parseInt(rest[2], 10) : 500 } };
+    case "wait": {
+      const target = require_(rest, 1, 'Usage: camoufox-cli wait @e1 | camoufox-cli wait 2000 | camoufox-cli wait --url "pattern"');
+      if (target === "--url") return { id: "r1", action: "wait", params: { url: require_(rest, 2, 'Usage: camoufox-cli wait --url "*/dashboard"') } };
+      if (target.startsWith("@")) return { id: "r1", action: "wait", params: { ref: target } };
+      if (/^\d/.test(target)) return { id: "r1", action: "wait", params: { ms: parseInt(target, 10) } };
+      return { id: "r1", action: "wait", params: { selector: target } };
+    }
+
+    case "tabs":
+      return { id: "r1", action: "tabs", params: {} };
+    case "switch":
+      return { id: "r1", action: "switch", params: { index: parseInt(require_(rest, 1, "Usage: camoufox-cli switch <tab-index>"), 10) } };
+    case "close-tab":
+      return { id: "r1", action: "close-tab", params: {} };
+
+    case "sessions":
+      return { id: "r1", action: "sessions", params: {} };
+    case "cookies": {
+      if (rest.length > 1 && rest[1] === "import")
+        return { id: "r1", action: "cookies", params: { op: "import", path: require_(rest, 2, "Usage: camoufox-cli cookies import file.json") } };
+      if (rest.length > 1 && rest[1] === "export")
+        return { id: "r1", action: "cookies", params: { op: "export", path: require_(rest, 2, "Usage: camoufox-cli cookies export file.json") } };
+      return { id: "r1", action: "cookies", params: { op: "list" } };
+    }
+
+    default:
+      process.stderr.write(`Unknown command: ${action}\n${USAGE}\n`);
+      process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Output
+// ---------------------------------------------------------------------------
+
+function printResponse(response: Record<string, unknown>, jsonMode: boolean): void {
+  if (jsonMode) {
+    console.log(JSON.stringify(response, null, 2));
+    return;
+  }
+
+  if (!response.success) {
+    process.stderr.write(`Error: ${response.error || "Unknown error"}\n`);
+    process.exit(1);
+  }
+
+  const data = response.data as Record<string, unknown> | undefined;
+  if (!data) return;
+
+  if ("snapshot" in data) {
+    console.log(data.snapshot);
+  } else if ("text" in data) {
+    console.log(data.text);
+  } else if ("result" in data) {
+    const v = data.result;
+    console.log(v === null ? "null" : typeof v === "string" ? v : JSON.stringify(v));
+  } else if (data.closed) {
+    // silent
+  } else if ("url" in data) {
+    if ("title" in data) console.log(data.title);
+    console.log(data.url);
+  } else if ("title" in data) {
+    console.log(data.title);
+  } else {
+    console.log(JSON.stringify(data, null, 2));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const { flags, command } = parseArgs(argv);
+
+  const action = command.action as string;
+
+  // Client-side: sessions
+  if (action === "sessions") {
+    const sessions = listSessions();
+    if (flags.json) {
+      console.log(JSON.stringify(sessions, null, 2));
+    } else if (sessions.length === 0) {
+      console.log("No active sessions.");
+    } else {
+      sessions.forEach((s) => console.log(s));
+    }
+    return;
+  }
+
+  // Client-side: close --all
+  if (action === "close" && (command.params as any)?.all) {
+    const sessions = listSessions();
+    if (sessions.length === 0) { console.log("No active sessions."); return; }
+    const closeCmd = { id: "r1", action: "close", params: {} };
+    for (const session of sessions) {
+      try { await sendCommand(getSocketPath(session), closeCmd); }
+      catch (e: any) { process.stderr.write(`Failed to close session ${session}: ${e.message}\n`); }
+    }
+    return;
+  }
+
+  // Ensure daemon is running
+  await ensureDaemon(flags.session, flags.headed, flags.timeout, flags.persistent);
+
+  const sockPath = getSocketPath(flags.session);
+
+  // Send command with retry
+  let lastErr = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const response = await sendCommand(sockPath, command);
+      printResponse(response, flags.json);
+      return;
+    } catch (e: any) {
+      lastErr = e.message || String(e);
+      if (attempt < 4) await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+    }
+  }
+
+  process.stderr.write(`Error: Failed to connect to daemon after 5 attempts: ${lastErr}\n`);
+  process.exit(1);
+}
+
+const USAGE = `Usage: camoufox-cli [flags] <command> [args]
+
+Navigation:
+  open <url>              Navigate to URL
+  back                    Go back
+  forward                 Go forward
+  reload                  Reload page
+  url                     Print current URL
+  title                   Print page title
+  close [--all]           Close browser and daemon (--all: all sessions)
+
+Snapshot:
+  snapshot [-i] [-s sel]  Aria tree (-i interactive, -s scoped)
+
+Interaction:
+  click @ref              Click element
+  fill @ref "text"        Clear + type into input
+  type @ref "text"        Type without clearing
+  select @ref "option"    Select dropdown option
+  check @ref              Toggle checkbox
+  hover @ref              Hover over element
+  press <key>             Press key (e.g. Enter, Control+a)
+
+Data:
+  text @ref|selector      Get text content
+  eval "js expression"    Execute JavaScript
+  screenshot [--full] [f] Screenshot to file or stdout
+  pdf <file>              Save page as PDF
+
+Scroll & Wait:
+  scroll <dir> [px]       Scroll up/down (default 500px)
+  wait <ms|@ref|--url p>  Wait for time/element/URL
+
+Tabs:
+  tabs                    List open tabs
+  switch <index>          Switch to tab
+  close-tab               Close current tab
+
+Session:
+  sessions                List active sessions
+  cookies [import|export] Manage cookies
+
+Flags:
+  --session <name>     Session name (default: "default")
+  --headed             Show browser window
+  --timeout <secs>     Daemon idle timeout (default: 1800)
+  --json               Output as JSON
+  --persistent <path>  Use persistent browser profile`;
+
+main();
