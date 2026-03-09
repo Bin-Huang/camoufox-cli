@@ -8,10 +8,19 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "node scripts/postinstall.js",
     "prepublishOnly": "cp ../README.md . && npm run build"
   },
-  "keywords": ["browser", "automation", "anti-detect", "camoufox", "ai-agent", "headless"],
+  "keywords": [
+    "browser",
+    "automation",
+    "anti-detect",
+    "camoufox",
+    "ai-agent",
+    "headless"
+  ],
   "author": "Benn Huang",
   "license": "MIT",
   "repository": "https://github.com/Bin-Huang/camoufox-cli",
@@ -21,7 +30,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=18"

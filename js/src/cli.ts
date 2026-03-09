@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const SOCKET_PREFIX = "/tmp/camoufox-cli-";
 
-function getSocketPath(session: string): string {
+export function getSocketPath(session: string): string {
   return `${SOCKET_PREFIX}${session}.sock`;
 }
 
@@ -74,7 +74,7 @@ async function ensureDaemon(session: string, headed: boolean, timeout: number, p
   await spawnDaemon(session, headed, timeout, persistent);
 }
 
-function listSessions(): string[] {
+export function listSessions(): string[] {
   const sessions: string[] = [];
   try {
     for (const name of fs.readdirSync("/tmp")) {
@@ -90,7 +90,7 @@ function listSessions(): string[] {
 // Arg parsing
 // ---------------------------------------------------------------------------
 
-interface Flags {
+export interface Flags {
   session: string;
   headed: boolean;
   timeout: number;
@@ -98,7 +98,7 @@ interface Flags {
   persistent: string | null;
 }
 
-function parseArgs(argv: string[]): { flags: Flags; command: Record<string, unknown> } {
+export function parseArgs(argv: string[]): { flags: Flags; command: Record<string, unknown> } {
   const flags: Flags = { session: "default", headed: false, timeout: 1800, json: false, persistent: null };
   const rest: string[] = [];
 
@@ -143,7 +143,7 @@ function require_(args: string[], idx: number, usage: string): string {
   return args[idx];
 }
 
-function buildCommand(action: string, rest: string[]): Record<string, unknown> {
+export function buildCommand(action: string, rest: string[]): Record<string, unknown> {
   switch (action) {
     case "open":
       return { id: "r1", action: "open", params: { url: require_(rest, 1, "Usage: camoufox-cli open <url>") } };
@@ -239,7 +239,7 @@ function buildCommand(action: string, rest: string[]): Record<string, unknown> {
 // Output
 // ---------------------------------------------------------------------------
 
-function printResponse(response: Record<string, unknown>, jsonMode: boolean): void {
+export function printResponse(response: Record<string, unknown>, jsonMode: boolean): void {
   if (jsonMode) {
     console.log(JSON.stringify(response, null, 2));
     return;
@@ -452,4 +452,6 @@ Flags:
   --json               Output as JSON
   --persistent <path>  Use persistent browser profile`;
 
-main();
+const isDirectRun = process.argv[1] &&
+  (process.argv[1].endsWith("/cli.js") || process.argv[1].endsWith("/cli.ts"));
+if (isDirectRun) main();
