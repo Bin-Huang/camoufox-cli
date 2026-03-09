@@ -5,13 +5,13 @@ import { Camoufox, launchOptions } from "camoufox-js";
 import { firefox, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { RefRegistry } from "./refs.js";
 
-function ensureBrowserDownloaded(): void {
+function ensureBrowserInstalled(): void {
   try {
     execFileSync("npx", ["camoufox-js", "path"], { stdio: "pipe" });
   } catch {
-    process.stderr.write("[camoufox-cli] Browser not found, downloading...\n");
-    execFileSync("npx", ["camoufox-js", "fetch"], { stdio: "inherit" });
-    process.stderr.write("[camoufox-cli] Browser downloaded.\n");
+    throw new Error(
+      "Browser not found. Run `camoufox-cli install` to download it."
+    );
   }
 }
 
@@ -31,7 +31,7 @@ export class BrowserManager {
   async launch(headless: boolean = true): Promise<void> {
     if (this.browser || this.context) return;
 
-    ensureBrowserDownloaded();
+    ensureBrowserInstalled();
 
     if (this.persistent) {
       const opts = await launchOptions({ headless });

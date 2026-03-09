@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "postinstall": "camoufox-js fetch",
+    "postinstall": "node scripts/postinstall.js",
     "prepublishOnly": "npm run build"
   },
   "keywords": ["browser", "automation", "anti-detect", "camoufox", "ai-agent", "headless"],
@@ -26,6 +26,7 @@
     "node": ">=18"
   },
   "files": [
-    "dist"
+    "dist",
+    "scripts"
   ]
 }

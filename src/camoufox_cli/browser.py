@@ -10,17 +10,15 @@ from playwright.sync_api import BrowserContext, Page
 from .refs import RefRegistry
 
 
-def _ensure_browser_downloaded() -> None:
-    """Download the Camoufox browser binary if not already installed."""
+def _ensure_browser_installed() -> None:
+    """Check that the Camoufox browser binary is installed, raise if not."""
     try:
         from camoufox.pkgman import get_path
         get_path("camoufox")
     except Exception:
-        print("[camoufox-cli] Browser not found, downloading...", file=sys.stderr)
-        from camoufox.pkgman import CamoufoxFetcher
-        fetcher = CamoufoxFetcher()
-        fetcher.install()
-        print("[camoufox-cli] Browser downloaded.", file=sys.stderr)
+        raise RuntimeError(
+            "Browser not found. Run `camoufox-cli install` to download it."
+        )
 
 
 class BrowserManager:
@@ -41,7 +39,7 @@ class BrowserManager:
             return
         self._headless = headless
 
-        _ensure_browser_downloaded()
+        _ensure_browser_installed()
 
         kwargs: dict = {"headless": headless}
         if self._persistent:
