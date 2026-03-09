@@ -14,6 +14,7 @@
   "keywords": ["browser", "automation", "anti-detect", "camoufox", "ai-agent", "headless"],
   "author": "Benn Huang",
   "license": "MIT",
+  "repository": "https://github.com/Bin-Huang/camoufox-cli",
   "dependencies": {
     "camoufox-js": "^0.8.5",
     "playwright-core": "^1.52.0"

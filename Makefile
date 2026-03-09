@@ -19,7 +19,7 @@ publish-pip: build
 	twine upload dist/*
 
 publish-npm: build
-	cd js && npm publish
+	cd js && npm publish --access public
 
 clean:
 	rm -rf dist/
