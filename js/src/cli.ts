@@ -3,8 +3,9 @@
 
 import * as net from "node:net";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const SOCKET_PREFIX = "/tmp/camoufox-cli-";
@@ -218,6 +219,8 @@ function buildCommand(action: string, rest: string[]): Record<string, unknown> {
 
     case "sessions":
       return { id: "r1", action: "sessions", params: {} };
+    case "install":
+      return { id: "r1", action: "install", params: { with_deps: rest.includes("--with-deps") } };
     case "cookies": {
       if (rest.length > 1 && rest[1] === "import")
         return { id: "r1", action: "cookies", params: { op: "import", path: require_(rest, 2, "Usage: camoufox-cli cookies import file.json") } };
@@ -270,6 +273,59 @@ function printResponse(response: Record<string, unknown>, jsonMode: boolean): vo
 }
 
 // ---------------------------------------------------------------------------
+// System dependencies
+// ---------------------------------------------------------------------------
+
+const SYSTEM_DEPS = [
+  "libasound2",
+  "libatk-bridge2.0-0",
+  "libatk1.0-0",
+  "libcairo2",
+  "libcups2",
+  "libdbus-1-3",
+  "libdrm2",
+  "libgbm1",
+  "libgdk-pixbuf-2.0-0",
+  "libglib2.0-0",
+  "libgtk-3-0",
+  "libnspr4",
+  "libnss3",
+  "libpango-1.0-0",
+  "libx11-6",
+  "libxcb1",
+  "libxcomposite1",
+  "libxdamage1",
+  "libxext6",
+  "libxfixes3",
+  "libxrandr2",
+  "libxshmfence1",
+  "libxtst6",
+];
+
+function installSystemDeps(): void {
+  if (os.platform() !== "linux") {
+    process.stderr.write("[camoufox-cli] System dependencies are only needed on Linux, skipping.\n");
+    return;
+  }
+
+  process.stderr.write("[camoufox-cli] Installing system dependencies...\n");
+
+  if (fs.existsSync("/usr/bin/apt-get")) {
+    execFileSync("sudo", ["apt-get", "update", "-y"], { stdio: "inherit" });
+    execFileSync("sudo", ["apt-get", "install", "-y", ...SYSTEM_DEPS], { stdio: "inherit" });
+  } else if (fs.existsSync("/usr/bin/dnf")) {
+    execFileSync("sudo", ["dnf", "install", "-y", ...SYSTEM_DEPS], { stdio: "inherit" });
+  } else if (fs.existsSync("/usr/bin/yum")) {
+    execFileSync("sudo", ["yum", "install", "-y", ...SYSTEM_DEPS], { stdio: "inherit" });
+  } else {
+    process.stderr.write("[camoufox-cli] Could not detect a supported package manager (apt-get, dnf, yum).\n");
+    process.exit(1);
+  }
+
+  process.stderr.write("[camoufox-cli] System dependencies installed.\n");
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -278,6 +334,17 @@ async function main() {
   const { flags, command } = parseArgs(argv);
 
   const action = command.action as string;
+
+  // Client-side: install
+  if (action === "install") {
+    process.stderr.write("[camoufox-cli] Downloading browser...\n");
+    execFileSync("npx", ["camoufox-js", "fetch"], { stdio: "inherit" });
+    process.stderr.write("[camoufox-cli] Browser installed.\n");
+    if ((command.params as any)?.with_deps) {
+      installSystemDeps();
+    }
+    return;
+  }
 
   // Client-side: sessions
   if (action === "sessions") {
@@ -367,6 +434,9 @@ Tabs:
 Session:
   sessions                List active sessions
   cookies [import|export] Manage cookies
+
+Setup:
+  install [--with-deps]   Download browser (--with-deps: system libs)
 
 Flags:
   --session <name>     Session name (default: "default")

@@ -234,6 +234,10 @@ def build_command(action: str, rest: list[str]) -> dict:
         case "close-tab":
             return {"id": "r1", "action": "close-tab", "params": {}}
 
+        # Install
+        case "install":
+            return {"id": "r1", "action": "install", "params": {"with_deps": "--with-deps" in rest}}
+
         # Session & Cookies
         case "sessions":
             return {"id": "r1", "action": "sessions", "params": {}}
@@ -291,11 +295,73 @@ def print_response(response: dict, json_mode: bool) -> None:
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
 
+_SYSTEM_DEPS = [
+    "libasound2",
+    "libatk-bridge2.0-0",
+    "libatk1.0-0",
+    "libcairo2",
+    "libcups2",
+    "libdbus-1-3",
+    "libdrm2",
+    "libgbm1",
+    "libgdk-pixbuf-2.0-0",
+    "libglib2.0-0",
+    "libgtk-3-0",
+    "libnspr4",
+    "libnss3",
+    "libpango-1.0-0",
+    "libx11-6",
+    "libxcb1",
+    "libxcomposite1",
+    "libxdamage1",
+    "libxext6",
+    "libxfixes3",
+    "libxrandr2",
+    "libxshmfence1",
+    "libxtst6",
+]
+
+
+def _install_system_deps() -> None:
+    import platform
+    import shutil
+
+    if platform.system() != "Linux":
+        print("[camoufox-cli] System dependencies are only needed on Linux, skipping.", file=sys.stderr)
+        return
+
+    print("[camoufox-cli] Installing system dependencies...", file=sys.stderr)
+
+    if shutil.which("apt-get"):
+        subprocess.run(["sudo", "apt-get", "update", "-y"], check=True)
+        subprocess.run(["sudo", "apt-get", "install", "-y", *_SYSTEM_DEPS], check=True)
+    elif shutil.which("dnf"):
+        subprocess.run(["sudo", "dnf", "install", "-y", *_SYSTEM_DEPS], check=True)
+    elif shutil.which("yum"):
+        subprocess.run(["sudo", "yum", "install", "-y", *_SYSTEM_DEPS], check=True)
+    else:
+        print("[camoufox-cli] Could not detect a supported package manager (apt-get, dnf, yum).", file=sys.stderr)
+        sys.exit(1)
+
+    print("[camoufox-cli] System dependencies installed.", file=sys.stderr)
+
+
 def main():
     args = sys.argv[1:]
     flags, command = parse_args(args)
 
     action = command.get("action", "")
+
+    # Client-side: install
+    if action == "install":
+        print("[camoufox-cli] Downloading browser...", file=sys.stderr)
+        from camoufox.pkgman import CamoufoxFetcher
+        fetcher = CamoufoxFetcher()
+        fetcher.install()
+        print("[camoufox-cli] Browser installed.", file=sys.stderr)
+        if command.get("params", {}).get("with_deps"):
+            _install_system_deps()
+        return
 
     # Client-side: sessions
     if action == "sessions":
@@ -387,6 +453,9 @@ Tabs:
 Session:
   sessions                List active sessions
   cookies [import|export] Manage cookies
+
+Setup:
+  install [--with-deps]   Download browser (--with-deps: system libs)
 
 Flags:
   --session <name>     Session name (default: "default")

@@ -9,13 +9,21 @@ Anti-detect headless browser automation CLI for AI agents, powered by [Camoufox]
 ## Install
 
 ```bash
-pipx install camoufox-cli
+npm install -g camoufox-cli
+camoufox-cli install              # Download browser
 ```
 
 Or with pip:
 
 ```bash
-pip install camoufox-cli
+pipx install camoufox-cli
+camoufox-cli install              # Download browser
+```
+
+On Linux, install system dependencies with:
+
+```bash
+camoufox-cli install --with-deps
 ```
 
 ## Quick Start
