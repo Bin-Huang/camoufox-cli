@@ -12,9 +12,7 @@ function resolveRef(manager: BrowserManager, refStr: string): Locator {
     throw new Error(`Ref @${refStr.replace(/^@/, "")} not found. Run 'camoufox-cli snapshot' to refresh refs.`);
   }
   const page = manager.getPage();
-  const locator = entry.name
-    ? page.getByRole(entry.role as any, { name: entry.name, exact: true })
-    : page.getByRole(entry.role as any);
+  const locator = page.getByRole(entry.role as any, { name: entry.name, exact: true });
   return locator.nth(entry.nth);
 }
 
@@ -108,21 +106,7 @@ const cmdClick: Handler = async (manager, cmdId, params) => {
   const page = manager.getPage();
   const urlBefore = page.url();
 
-  // Navigate via page.goto() for links, el.click() for other elements.
-  const linkHref = await locator.evaluate((el: Element) => {
-    let node: Element | null = el;
-    while (node) {
-      if (node.tagName === "A") return (node as HTMLAnchorElement).href;
-      node = node.parentElement;
-    }
-    return null;
-  });
-
-  if (linkHref) {
-    await page.goto(linkHref, { waitUntil: "domcontentloaded" });
-  } else {
-    await locator.evaluate((el: Element) => (el as HTMLElement).click());
-  }
+  await locator.click();
 
   const urlAfter = page.url();
   if (urlAfter !== urlBefore) manager.pushHistory(urlAfter);
