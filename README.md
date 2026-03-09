@@ -2,9 +2,23 @@
 
 Anti-detect headless browser automation CLI for AI agents, powered by [Camoufox](https://github.com/daijro/camoufox).
 
-[Camoufox](https://github.com/daijro/camoufox) is a stealthy Firefox fork with C++-level fingerprint spoofing. It defeats bot detection by masking `navigator.webdriver`, randomizing canvas/WebGL/audio fingerprints, and injecting real browser plugins. However, Camoufox only provides a Python API. AI agents like OpenClaw or Claude Code would need to generate Python glue code to use it, which is fragile, wastes tokens, and distracts the agent from its actual task.
+When AI agents (OpenClaw, Claude Code, etc.) browse the web with tools like built-in browser, Playwright MCP or agent-browser, they get flagged as bots constantly. CAPTCHAs, login walls, flat-out blocks. These tools expose clear automation signals: `navigator.webdriver=true`, zero browser plugins, uniform canvas/WebGL/AudioContext fingerprints, predictable screen and font enumeration.
 
-**camoufox-cli** bridges this gap by wrapping Camoufox into a stateless CLI. A background daemon manages the browser instance and ref registry, so each command is a simple shell call: snapshot the accessibility tree, interact by ref, repeat. Any AI agent that can invoke shell commands can use Camoufox, no Python glue code generation needed.
+[Camoufox](https://github.com/daijro/camoufox) is a Firefox fork that solves this with C++ engine patches rather than JavaScript overrides that anti-bot systems easily detect. It spoofs hardware fingerprints (canvas, WebGL, audio), ships real browser plugins, randomizes screen metrics and font lists, and reports `navigator.webdriver=false`. Anti-bot systems see a normal user's browser.
+
+Using Camoufox directly means agents have to generate Python glue code for every interaction, burning tokens and context on boilerplate. Inspired by [agent-browser](https://github.com/vercel-labs/agent-browser), camoufox-cli puts Camoufox behind a CLI with a background daemon. Each action is one shell command, no code generation, no wasted tokens.
+
+### Features
+
+- **Anti-detect** - C++ engine-level fingerprint spoofing: canvas, WebGL, audio, screen metrics, font lists, `navigator.webdriver=false`
+- **Agent-first** - Compact text output minimizes token usage, designed for AI agent context efficiency
+- **Ref-based** - Snapshot returns accessibility tree with `@ref` for deterministic element selection
+- **Sessions** - Multiple isolated browser instances with separate cookies and auth state
+- **Cookies** - Import/export cookies as JSON for persistent login across sessions
+
+### Works with
+
+OpenClaw, Claude Code, Cursor, Codex, and any agent that can run shell commands.
 
 ## Install
 
