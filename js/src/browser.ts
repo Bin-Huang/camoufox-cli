@@ -1,8 +1,19 @@
 /** Browser manager: launches and manages Camoufox instance. */
 
+import { execFileSync } from "node:child_process";
 import { Camoufox, launchOptions } from "camoufox-js";
 import { firefox, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { RefRegistry } from "./refs.js";
+
+function ensureBrowserDownloaded(): void {
+  try {
+    execFileSync("npx", ["camoufox-js", "path"], { stdio: "pipe" });
+  } catch {
+    process.stderr.write("[camoufox-cli] Browser not found, downloading...\n");
+    execFileSync("npx", ["camoufox-js", "fetch"], { stdio: "inherit" });
+    process.stderr.write("[camoufox-cli] Browser downloaded.\n");
+  }
+}
 
 export class BrowserManager {
   refs = new RefRegistry();
@@ -19,6 +30,8 @@ export class BrowserManager {
 
   async launch(headless: boolean = true): Promise<void> {
     if (this.browser || this.context) return;
+
+    ensureBrowserDownloaded();
 
     if (this.persistent) {
       const opts = await launchOptions({ headless });
