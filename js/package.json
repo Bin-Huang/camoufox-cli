@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc",
     "postinstall": "node scripts/postinstall.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "cp ../README.md . && npm run build"
   },
   "keywords": ["browser", "automation", "anti-detect", "camoufox", "ai-agent", "headless"],
   "author": "Benn Huang",

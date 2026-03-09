@@ -10,6 +10,7 @@ build/
 
 # Node
 node_modules/
+js/README.md
 
 # IDE
 .idea/
