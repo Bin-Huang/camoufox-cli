@@ -276,31 +276,37 @@ function printResponse(response: Record<string, unknown>, jsonMode: boolean): vo
 // System dependencies
 // ---------------------------------------------------------------------------
 
-const SYSTEM_DEPS = [
-  "libasound2",
-  "libatk-bridge2.0-0",
-  "libatk1.0-0",
-  "libcairo2",
-  "libcups2",
-  "libdbus-1-3",
-  "libdrm2",
-  "libgbm1",
-  "libgdk-pixbuf-2.0-0",
-  "libglib2.0-0",
-  "libgtk-3-0",
-  "libnspr4",
-  "libnss3",
-  "libpango-1.0-0",
-  "libx11-6",
-  "libxcb1",
-  "libxcomposite1",
-  "libxdamage1",
-  "libxext6",
-  "libxfixes3",
-  "libxrandr2",
-  "libxshmfence1",
-  "libxtst6",
+const APT_DEPS = [
+  "libxcb-shm0", "libx11-xcb1", "libx11-6", "libxcb1", "libxext6",
+  "libxrandr2", "libxcomposite1", "libxcursor1", "libxdamage1", "libxfixes3",
+  "libxi6", "libgtk-3-0", "libpangocairo-1.0-0", "libpango-1.0-0",
+  "libatk1.0-0", "libcairo-gobject2", "libcairo2", "libgdk-pixbuf-2.0-0",
+  "libxrender1", "libfreetype6", "libfontconfig1", "libdbus-1-3",
+  "libnss3", "libnspr4", "libatk-bridge2.0-0", "libdrm2", "libxkbcommon0",
+  "libatspi2.0-0", "libcups2", "libxshmfence1", "libgbm1",
 ];
+
+const DNF_DEPS = [
+  "nss", "nspr", "atk", "at-spi2-atk", "cups-libs", "libdrm",
+  "libXcomposite", "libXdamage", "libXrandr", "mesa-libgbm", "pango",
+  "alsa-lib", "libxkbcommon", "libxcb", "libX11-xcb", "libX11",
+  "libXext", "libXcursor", "libXfixes", "libXi", "gtk3", "cairo-gobject",
+];
+
+const YUM_DEPS = [
+  "nss", "nspr", "atk", "at-spi2-atk", "cups-libs", "libdrm",
+  "libXcomposite", "libXdamage", "libXrandr", "mesa-libgbm", "pango",
+  "alsa-lib", "libxkbcommon",
+];
+
+function resolveAptLibasound(): string {
+  try {
+    execFileSync("dpkg", ["-l", "libasound2t64"], { stdio: "pipe" });
+    return "libasound2t64";
+  } catch {
+    return "libasound2";
+  }
+}
 
 function installSystemDeps(): void {
   if (os.platform() !== "linux") {
@@ -311,12 +317,13 @@ function installSystemDeps(): void {
   process.stderr.write("[camoufox-cli] Installing system dependencies...\n");
 
   if (fs.existsSync("/usr/bin/apt-get")) {
+    const deps = [...APT_DEPS, resolveAptLibasound()];
     execFileSync("sudo", ["apt-get", "update", "-y"], { stdio: "inherit" });
-    execFileSync("sudo", ["apt-get", "install", "-y", ...SYSTEM_DEPS], { stdio: "inherit" });
+    execFileSync("sudo", ["apt-get", "install", "-y", ...deps], { stdio: "inherit" });
   } else if (fs.existsSync("/usr/bin/dnf")) {
-    execFileSync("sudo", ["dnf", "install", "-y", ...SYSTEM_DEPS], { stdio: "inherit" });
+    execFileSync("sudo", ["dnf", "install", "-y", ...DNF_DEPS], { stdio: "inherit" });
   } else if (fs.existsSync("/usr/bin/yum")) {
-    execFileSync("sudo", ["yum", "install", "-y", ...SYSTEM_DEPS], { stdio: "inherit" });
+    execFileSync("sudo", ["yum", "install", "-y", ...YUM_DEPS], { stdio: "inherit" });
   } else {
     process.stderr.write("[camoufox-cli] Could not detect a supported package manager (apt-get, dnf, yum).\n");
     process.exit(1);

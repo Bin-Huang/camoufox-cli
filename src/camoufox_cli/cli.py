@@ -295,31 +295,37 @@ def print_response(response: dict, json_mode: bool) -> None:
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
 
-_SYSTEM_DEPS = [
-    "libasound2",
-    "libatk-bridge2.0-0",
-    "libatk1.0-0",
-    "libcairo2",
-    "libcups2",
-    "libdbus-1-3",
-    "libdrm2",
-    "libgbm1",
-    "libgdk-pixbuf-2.0-0",
-    "libglib2.0-0",
-    "libgtk-3-0",
-    "libnspr4",
-    "libnss3",
-    "libpango-1.0-0",
-    "libx11-6",
-    "libxcb1",
-    "libxcomposite1",
-    "libxdamage1",
-    "libxext6",
-    "libxfixes3",
-    "libxrandr2",
-    "libxshmfence1",
-    "libxtst6",
+_APT_DEPS = [
+    "libxcb-shm0", "libx11-xcb1", "libx11-6", "libxcb1", "libxext6",
+    "libxrandr2", "libxcomposite1", "libxcursor1", "libxdamage1", "libxfixes3",
+    "libxi6", "libgtk-3-0", "libpangocairo-1.0-0", "libpango-1.0-0",
+    "libatk1.0-0", "libcairo-gobject2", "libcairo2", "libgdk-pixbuf-2.0-0",
+    "libxrender1", "libfreetype6", "libfontconfig1", "libdbus-1-3",
+    "libnss3", "libnspr4", "libatk-bridge2.0-0", "libdrm2", "libxkbcommon0",
+    "libatspi2.0-0", "libcups2", "libxshmfence1", "libgbm1",
 ]
+
+_DNF_DEPS = [
+    "nss", "nspr", "atk", "at-spi2-atk", "cups-libs", "libdrm",
+    "libXcomposite", "libXdamage", "libXrandr", "mesa-libgbm", "pango",
+    "alsa-lib", "libxkbcommon", "libxcb", "libX11-xcb", "libX11",
+    "libXext", "libXcursor", "libXfixes", "libXi", "gtk3", "cairo-gobject",
+]
+
+_YUM_DEPS = [
+    "nss", "nspr", "atk", "at-spi2-atk", "cups-libs", "libdrm",
+    "libXcomposite", "libXdamage", "libXrandr", "mesa-libgbm", "pango",
+    "alsa-lib", "libxkbcommon",
+]
+
+
+def _resolve_apt_libasound() -> str:
+    """Newer Debian/Ubuntu renamed libasound2 to libasound2t64."""
+    result = subprocess.run(
+        ["dpkg", "-l", "libasound2t64"],
+        capture_output=True,
+    )
+    return "libasound2t64" if result.returncode == 0 else "libasound2"
 
 
 def _install_system_deps() -> None:
@@ -333,12 +339,13 @@ def _install_system_deps() -> None:
     print("[camoufox-cli] Installing system dependencies...", file=sys.stderr)
 
     if shutil.which("apt-get"):
+        deps = [*_APT_DEPS, _resolve_apt_libasound()]
         subprocess.run(["sudo", "apt-get", "update", "-y"], check=True)
-        subprocess.run(["sudo", "apt-get", "install", "-y", *_SYSTEM_DEPS], check=True)
+        subprocess.run(["sudo", "apt-get", "install", "-y", *deps], check=True)
     elif shutil.which("dnf"):
-        subprocess.run(["sudo", "dnf", "install", "-y", *_SYSTEM_DEPS], check=True)
+        subprocess.run(["sudo", "dnf", "install", "-y", *_DNF_DEPS], check=True)
     elif shutil.which("yum"):
-        subprocess.run(["sudo", "yum", "install", "-y", *_SYSTEM_DEPS], check=True)
+        subprocess.run(["sudo", "yum", "install", "-y", *_YUM_DEPS], check=True)
     else:
         print("[camoufox-cli] Could not detect a supported package manager (apt-get, dnf, yum).", file=sys.stderr)
         sys.exit(1)

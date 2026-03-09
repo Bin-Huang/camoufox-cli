@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-
 from camoufox.sync_api import Camoufox
 from playwright.sync_api import BrowserContext, Page
 
