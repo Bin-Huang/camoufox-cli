@@ -159,7 +159,7 @@ camoufox-cli cookies export file.json     # Export cookies
 ## Architecture
 
 ```
-CLI (camoufox-cli)  ──Unix socket──▶  Daemon (Python)  ──Playwright──▶  Camoufox (Firefox)
+CLI (camoufox-cli)  ──Unix socket──▶  Daemon (Node.js)  ──Playwright──▶  Camoufox (Firefox)
 ```
 
 The CLI sends JSON commands to a long-running daemon process via Unix socket. The daemon manages the Camoufox browser instance and maintains the ref registry between commands. The daemon auto-starts on the first command and auto-stops after 30 minutes of inactivity.

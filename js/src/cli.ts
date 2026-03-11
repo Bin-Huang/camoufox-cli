@@ -30,9 +30,24 @@ function sendCommand(sockPath: string, command: Record<string, unknown>): Promis
   });
 }
 
+export function resolveDaemonPath(moduleUrl: string = import.meta.url): string {
+  const resolvedModulePath = fs.realpathSync(fileURLToPath(moduleUrl));
+  return path.join(path.dirname(resolvedModulePath), "daemon.js");
+}
+
+export function isDirectRun(moduleUrl: string = import.meta.url, argv1: string | undefined = process.argv[1]): boolean {
+  if (!argv1) return false;
+  try {
+    const modulePath = fs.realpathSync(fileURLToPath(moduleUrl));
+    const entryPath = fs.realpathSync(argv1);
+    return modulePath === entryPath;
+  } catch {
+    return false;
+  }
+}
+
 function spawnDaemon(session: string, headed: boolean, timeout: number, persistent: string | null): Promise<void> {
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const daemonPath = path.join(__dirname, "daemon.js");
+  const daemonPath = resolveDaemonPath();
 
   const args = ["--session", session, "--timeout", String(timeout)];
   if (headed) args.push("--headed");
@@ -452,6 +467,4 @@ Flags:
   --json               Output as JSON
   --persistent <path>  Use persistent browser profile`;
 
-const isDirectRun = process.argv[1] &&
-  (process.argv[1].endsWith("/cli.js") || process.argv[1].endsWith("/cli.ts"));
-if (isDirectRun) main();
+if (isDirectRun()) main();
