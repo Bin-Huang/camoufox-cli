@@ -103,10 +103,10 @@ describe("parameter validation", () => {
     expect(resp.success).toBe(false);
   });
 
-  it("pdf not supported", async () => {
+  it("pdf missing path", async () => {
     const resp = await execute(manager, { id: "r1", action: "pdf", params: {} });
     expect(resp.success).toBe(false);
-    expect(resp.error!.toLowerCase()).toContain("not supported");
+    expect(resp.error!.toLowerCase()).toContain("path");
   });
 });
 

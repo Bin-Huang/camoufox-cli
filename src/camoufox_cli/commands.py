@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 
 from .browser import BrowserManager
@@ -244,10 +245,21 @@ def _cmd_screenshot(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 
 
 def _cmd_pdf(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    return error_response(
-        cmd_id,
-        "PDF export is not supported with Firefox/Camoufox. Use 'screenshot --full' instead.",
-    )
+    path = params.get("path", "")
+    if not path:
+        return error_response(cmd_id, "Missing 'path' parameter")
+
+    page = manager.get_page()
+    buf = page.screenshot(full_page=True)
+
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(buf))
+    if img.mode == "RGBA":
+        img = img.convert("RGB")
+    img.save(path, "PDF", resolution=72.0)
+
+    return ok_response(cmd_id, {"path": path})
 
 
 # ---------------------------------------------------------------------------

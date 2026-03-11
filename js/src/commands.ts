@@ -201,8 +201,28 @@ const cmdScreenshot: Handler = async (manager, cmdId, params) => {
   }
 };
 
-const cmdPdf: Handler = async (_manager, cmdId) => {
-  return errorResponse(cmdId, "PDF export is not supported with Firefox/Camoufox. Use 'screenshot --full' instead.");
+const cmdPdf: Handler = async (manager, cmdId, params) => {
+  const filePath = params.path as string;
+  if (!filePath) return errorResponse(cmdId, "Missing 'path' parameter");
+
+  const page = manager.getPage();
+  const buf = await page.screenshot({ fullPage: true });
+
+  const { PDFDocument } = await import("pdf-lib");
+  const pdfDoc = await PDFDocument.create();
+  const pngImage = await pdfDoc.embedPng(buf);
+  const pdfPage = pdfDoc.addPage([pngImage.width, pngImage.height]);
+  pdfPage.drawImage(pngImage, {
+    x: 0,
+    y: 0,
+    width: pngImage.width,
+    height: pngImage.height,
+  });
+
+  const pdfBytes = await pdfDoc.save();
+  writeFileSync(filePath, Buffer.from(pdfBytes));
+
+  return okResponse(cmdId, { path: filePath });
 };
 
 // ---------------------------------------------------------------------------

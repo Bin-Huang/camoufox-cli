@@ -17,6 +17,7 @@ classifiers = [
 dependencies = [
     "camoufox[geoip]",
     "playwright",
+    "Pillow",
 ]
 
 [project.urls]

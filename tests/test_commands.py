@@ -94,10 +94,10 @@ class TestCommandValidation:
         resp = execute(self.manager, {"id": "r1", "action": "switch", "params": {}})
         assert resp["success"] is False
 
-    def test_pdf_not_supported(self):
+    def test_pdf_missing_path(self):
         resp = execute(self.manager, {"id": "r1", "action": "pdf", "params": {}})
         assert resp["success"] is False
-        assert "not supported" in resp["error"].lower()
+        assert "path" in resp["error"].lower()
 
 
 class TestBrowserNotLaunched:
