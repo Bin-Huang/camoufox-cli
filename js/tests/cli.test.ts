@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buildCommand, getSocketPath } from "../src/cli.js";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { pathToFileURL } from "node:url";
+import { buildCommand, getSocketPath, resolveDaemonPath } from "../src/cli.js";
 
 // buildCommand calls process.exit on error; mock it to throw instead
 beforeEach(() => {
@@ -254,6 +258,24 @@ describe("buildCommand", () => {
   it("all commands have id=r1", () => {
     const cmd = buildCommand("back", ["back"]);
     expect(cmd.id).toBe("r1");
+  });
+});
+
+describe("resolveDaemonPath", () => {
+  it("resolves daemon.js relative to the real file behind a symlink", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "camoufox-cli-test-"));
+    const realDir = path.join(tmp, "real", "dist");
+    const linkDir = path.join(tmp, "bin");
+    fs.mkdirSync(realDir, { recursive: true });
+    fs.mkdirSync(linkDir, { recursive: true });
+
+    const realCli = path.join(realDir, "cli.js");
+    const linkCli = path.join(linkDir, "camoufox-cli");
+    fs.writeFileSync(realCli, "// test");
+    fs.symlinkSync(realCli, linkCli);
+
+    const daemonPath = resolveDaemonPath(pathToFileURL(linkCli).href);
+    expect(daemonPath).toBe(path.join(realDir, "daemon.js"));
   });
 });
 
