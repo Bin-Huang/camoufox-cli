@@ -35,6 +35,17 @@ export function resolveDaemonPath(moduleUrl: string = import.meta.url): string {
   return path.join(path.dirname(resolvedModulePath), "daemon.js");
 }
 
+export function isDirectRun(moduleUrl: string = import.meta.url, argv1: string | undefined = process.argv[1]): boolean {
+  if (!argv1) return false;
+  try {
+    const modulePath = fs.realpathSync(fileURLToPath(moduleUrl));
+    const entryPath = fs.realpathSync(argv1);
+    return modulePath === entryPath;
+  } catch {
+    return false;
+  }
+}
+
 function spawnDaemon(session: string, headed: boolean, timeout: number, persistent: string | null): Promise<void> {
   const daemonPath = resolveDaemonPath();
 
@@ -456,6 +467,4 @@ Flags:
   --json               Output as JSON
   --persistent <path>  Use persistent browser profile`;
 
-const isDirectRun = process.argv[1] &&
-  (process.argv[1].endsWith("/cli.js") || process.argv[1].endsWith("/cli.ts"));
-if (isDirectRun) main();
+if (isDirectRun()) main();
