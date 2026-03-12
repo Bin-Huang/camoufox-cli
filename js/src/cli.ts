@@ -86,6 +86,20 @@ export function listSessions(): string[] {
   return sessions.sort();
 }
 
+export function isDirectRun(
+  argv1: string | undefined,
+  moduleUrl: string,
+  realpath: (target: string) => string = fs.realpathSync,
+): boolean {
+  if (!argv1) return false;
+
+  try {
+    return realpath(argv1) === realpath(fileURLToPath(moduleUrl));
+  } catch {
+    return path.resolve(argv1) === path.resolve(fileURLToPath(moduleUrl));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Arg parsing
 // ---------------------------------------------------------------------------
@@ -104,6 +118,10 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
 
   let i = 0;
   while (i < argv.length) {
+    if (argv[i] === "--help" || argv[i] === "-h") {
+      console.log(USAGE);
+      process.exit(0);
+    }
     switch (argv[i]) {
       case "--session":
         flags.session = argv[++i] ?? (process.stderr.write("Error: --session requires a value\n"), process.exit(1), "");
@@ -145,6 +163,9 @@ function require_(args: string[], idx: number, usage: string): string {
 
 export function buildCommand(action: string, rest: string[]): Record<string, unknown> {
   switch (action) {
+    case "help":
+      console.log(USAGE);
+      process.exit(0);
     case "open":
       return { id: "r1", action: "open", params: { url: require_(rest, 1, "Usage: camoufox-cli open <url>") } };
     case "back":
@@ -344,9 +365,10 @@ async function main() {
 
   // Client-side: install
   if (action === "install") {
-    process.stderr.write("[camoufox-cli] Downloading browser...\n");
+    console.log("[camoufox-cli] Installing or updating browser binaries...");
     execFileSync("npx", ["camoufox-js", "fetch"], { stdio: "inherit" });
-    process.stderr.write("[camoufox-cli] Browser installed.\n");
+    const installPath = execFileSync("npx", ["camoufox-js", "path"], { encoding: "utf8" }).trim();
+    console.log(`[camoufox-cli] Browser ready at ${installPath}`);
     if ((command.params as any)?.with_deps) {
       installSystemDeps();
     }
@@ -452,6 +474,4 @@ Flags:
   --json               Output as JSON
   --persistent <path>  Use persistent browser profile`;
 
-const isDirectRun = process.argv[1] &&
-  (process.argv[1].endsWith("/cli.js") || process.argv[1].endsWith("/cli.ts"));
-if (isDirectRun) main();
+if (isDirectRun(process.argv[1], import.meta.url)) main();

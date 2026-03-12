@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buildCommand, getSocketPath } from "../src/cli.js";
+import { buildCommand, getSocketPath, isDirectRun, parseArgs } from "../src/cli.js";
 
 // buildCommand calls process.exit on error; mock it to throw instead
 beforeEach(() => {
@@ -7,9 +7,15 @@ beforeEach(() => {
     throw new Error(`process.exit(${code})`);
   });
   vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  vi.spyOn(console, "log").mockImplementation(() => {});
 });
 
 describe("buildCommand", () => {
+  it("help exits with usage", () => {
+    expect(() => buildCommand("help", ["help"])).toThrow("process.exit(0)");
+    expect(console.log).toHaveBeenCalled();
+  });
+
   // --- Navigation ---
   it("open", () => {
     const cmd = buildCommand("open", ["open", "https://example.com"]);
@@ -264,5 +270,37 @@ describe("getSocketPath", () => {
 
   it("custom session", () => {
     expect(getSocketPath("my-session")).toBe("/tmp/camoufox-cli-my-session.sock");
+  });
+});
+
+describe("isDirectRun", () => {
+  it("matches the module path directly", () => {
+    expect(isDirectRun("/tmp/cli.js", "file:///tmp/cli.js")).toBe(true);
+  });
+
+  it("matches a symlinked bin path to the real module", () => {
+    const fakeRealpath = (input: string) => {
+      if (String(input) === "/opt/homebrew/bin/camoufox-cli") return "/usr/local/lib/node_modules/camoufox-cli/dist/cli.js";
+      if (String(input) === "/usr/local/lib/node_modules/camoufox-cli/dist/cli.js") return "/usr/local/lib/node_modules/camoufox-cli/dist/cli.js";
+      return String(input);
+    };
+
+    expect(isDirectRun("/opt/homebrew/bin/camoufox-cli", "file:///usr/local/lib/node_modules/camoufox-cli/dist/cli.js", fakeRealpath)).toBe(true);
+  });
+
+  it("returns false for a different executable", () => {
+    expect(isDirectRun("/tmp/other.js", "file:///tmp/cli.js")).toBe(false);
+  });
+});
+
+describe("parseArgs", () => {
+  it("--help exits with usage", () => {
+    expect(() => parseArgs(["--help"])).toThrow("process.exit(0)");
+    expect(console.log).toHaveBeenCalled();
+  });
+
+  it("-h exits with usage", () => {
+    expect(() => parseArgs(["-h"])).toThrow("process.exit(0)");
+    expect(console.log).toHaveBeenCalled();
   });
 });
