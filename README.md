@@ -1,20 +1,13 @@
 # camoufox-cli
 
-Anti-detect headless browser automation CLI for AI agents, powered by [Camoufox](https://github.com/daijro/camoufox).
+Anti-detect browser CLI for AI agents, powered by [Camoufox](https://github.com/daijro/camoufox).
 
-When AI agents (OpenClaw, Claude Code, etc.) browse the web with tools like built-in browser, Playwright MCP or agent-browser, they get flagged as bots constantly. CAPTCHAs, login walls, flat-out blocks. These tools expose clear automation signals: `navigator.webdriver=true`, zero browser plugins, uniform canvas/WebGL/AudioContext fingerprints, predictable screen and font enumeration.
+### Highlights
 
-[Camoufox](https://github.com/daijro/camoufox) is a Firefox fork that solves this with C++ engine patches rather than JavaScript overrides that anti-bot systems easily detect. It spoofs hardware fingerprints (canvas, WebGL, audio), ships real browser plugins, randomizes screen metrics and font lists, and reports `navigator.webdriver=false`. Anti-bot systems see a normal user's browser.
-
-Using Camoufox directly means agents have to generate Python glue code for every interaction, burning tokens and context on boilerplate. Inspired by [agent-browser](https://github.com/vercel-labs/agent-browser), camoufox-cli puts Camoufox behind a CLI with a background daemon. Each action is one shell command, no code generation, no wasted tokens.
-
-### Features
-
-- **Anti-detect** - C++ engine-level fingerprint spoofing: canvas, WebGL, audio, screen metrics, font lists, `navigator.webdriver=false`
-- **Agent-first** - Compact text output minimizes token usage, designed for AI agent context efficiency
-- **Ref-based** - Snapshot returns accessibility tree with `@ref` for deterministic element selection
-- **Sessions** - Multiple isolated browser instances with separate cookies and auth state
-- **Cookies** - Import/export cookies as JSON for persistent login across sessions
+- C++-level fingerprint spoofing via Camoufox (canvas, WebGL, audio, screen metrics, fonts)
+- Accessibility-tree snapshots with `@ref` element targeting
+- Session isolation with cookie import/export
+- Shell commands, no code generation
 
 ### Works with
 
