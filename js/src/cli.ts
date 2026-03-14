@@ -452,6 +452,10 @@ Flags:
   --json               Output as JSON
   --persistent <path>  Use persistent browser profile`;
 
-const isDirectRun = process.argv[1] &&
-  (process.argv[1].endsWith("/cli.js") || process.argv[1].endsWith("/cli.ts"));
+const isDirectRun = (() => {
+  try {
+    return process.argv[1] &&
+      fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch { return false; }
+})();
 if (isDirectRun) main();
