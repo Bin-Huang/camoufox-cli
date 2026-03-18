@@ -21,6 +21,9 @@ js/README.md
 # OS
 .DS_Store
 
+# Env
+.env
+
 # Runtime
 *.sock
 *.pid

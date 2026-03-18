@@ -475,3 +475,4 @@ Flags:
   --persistent <path>  Use persistent browser profile`;
 
 if (isDirectRun(process.argv[1], import.meta.url)) main();
+
