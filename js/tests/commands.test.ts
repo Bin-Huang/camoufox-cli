@@ -179,8 +179,9 @@ describe("handler dispatch table coverage", () => {
     const manager = new BrowserManager();
     const knownActions = [
       "open", "back", "forward", "reload", "url", "title", "close",
-      "snapshot", "click", "fill", "type", "select", "check", "hover", "press",
+      "snapshot", "click", "fill", "type", "select", "check", "hover", "press", "upload",
       "text", "eval", "screenshot", "pdf", "scroll", "wait",
+
       "tabs", "switch", "close-tab", "cookies",
     ];
     for (const action of knownActions) {

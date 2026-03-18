@@ -205,6 +205,18 @@ def _cmd_press(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
+def _cmd_upload(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+    ref_str = params.get("ref", "")
+    files = params.get("files", [])
+    if not ref_str:
+        return error_response(cmd_id, "Missing 'ref' parameter")
+    if not files:
+        return error_response(cmd_id, "Missing 'files' parameter")
+
+    _resolve_ref(manager, ref_str).set_input_files(files)
+    return ok_response(cmd_id)
+
+
 # ---------------------------------------------------------------------------
 # Data extraction
 # ---------------------------------------------------------------------------
@@ -373,6 +385,7 @@ _HANDLERS = {
     "check": _cmd_check,
     "hover": _cmd_hover,
     "press": _cmd_press,
+    "upload": _cmd_upload,
     # Data extraction
     "text": _cmd_text,
     "eval": _cmd_eval,

@@ -99,6 +99,16 @@ class TestCommandValidation:
         assert resp["success"] is False
         assert "path" in resp["error"].lower()
 
+    def test_upload_missing_ref(self):
+        resp = execute(self.manager, {"id": "r1", "action": "upload", "params": {"files": ["t.txt"]}})
+        assert resp["success"] is False
+        assert "ref" in resp["error"].lower()
+
+    def test_upload_missing_files(self):
+        resp = execute(self.manager, {"id": "r1", "action": "upload", "params": {"ref": "@e1"}})
+        assert resp["success"] is False
+        assert "files" in resp["error"].lower()
+
 
 class TestBrowserNotLaunched:
     """Test commands that require browser when none is running."""
@@ -461,28 +471,56 @@ class TestFixtureIntegration:
     @pytest.mark.integration
     def test_hover(self):
         execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "button")
+        # Pick the Submit button specifically to avoid picking up the File button
+        entry = next(e for e in self.manager.refs._entries.values() if e.role == "button" and e.name == "Submit")
         resp = execute(self.manager, {
             "id": "r2", "action": "hover",
             "params": {"ref": f"@{entry.ref}"},
         })
         assert resp["success"] is True
 
+
     @pytest.mark.integration
     def test_click_button(self):
         """Click a non-link button and verify side effect."""
         execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "button")
+        # Pick the Submit button specifically
+        entry = next(e for e in self.manager.refs._entries.values() if e.role == "button" and e.name == "Submit")
         resp = execute(self.manager, {
             "id": "r2", "action": "click",
             "params": {"ref": f"@{entry.ref}"},
         })
         assert resp["success"] is True
+
         resp = execute(self.manager, {
             "id": "r3", "action": "eval",
             "params": {"expression": "document.getElementById('output').textContent"},
         })
         assert resp["data"]["result"] == "clicked"
+
+    @pytest.mark.integration
+    def test_upload(self, tmp_path):
+        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        # File input is recognized as a button by aria-snapshot
+        entry = next(e for e in self.manager.refs._entries.values() if e.role == "button" and e.name == "File")
+        
+        # Create a dummy file to upload
+        file_path = str(tmp_path / "test-upload.txt")
+        with open(file_path, "w") as f:
+            f.write("test content")
+
+        resp = execute(self.manager, {
+            "id": "r2", "action": "upload",
+            "params": {"ref": f"@{entry.ref}", "files": [file_path]},
+        })
+        assert resp["success"] is True
+
+        # Verify side effect in fixture (it updates #output)
+        resp = execute(self.manager, {
+            "id": "r3", "action": "eval",
+            "params": {"expression": "document.getElementById('output').textContent"},
+        })
+        assert resp["data"]["result"] == "uploaded:test-upload.txt"
 
     @pytest.mark.integration
     def test_press(self):

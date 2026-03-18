@@ -205,6 +205,15 @@ export function buildCommand(action: string, rest: string[]): Record<string, unk
       return { id: "r1", action: "hover", params: { ref: require_(rest, 1, "Usage: camoufox-cli hover @e1") } };
     case "press":
       return { id: "r1", action: "press", params: { key: require_(rest, 1, "Usage: camoufox-cli press Enter") } };
+    case "upload": {
+      const ref = require_(rest, 1, "Usage: camoufox-cli upload @ref file1 file2...");
+      const files = rest.slice(2);
+      if (files.length === 0) {
+        process.stderr.write("Usage: camoufox-cli upload @ref file1 file2...\n");
+        process.exit(1);
+      }
+      return { id: "r1", action: "upload", params: { ref, files: files.map(f => path.resolve(f)) } };
+    }
 
     case "text":
       return { id: "r1", action: "text", params: { target: require_(rest, 1, "Usage: camoufox-cli text @e1") } };
@@ -444,6 +453,7 @@ Interaction:
   check @ref              Toggle checkbox
   hover @ref              Hover over element
   press <key>             Press key (e.g. Enter, Control+a)
+  upload @ref <f...>      Upload file(s) to input[@type=file]
 
 Data:
   text @ref|selector      Get text content
