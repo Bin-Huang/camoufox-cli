@@ -319,5 +319,6 @@ camoufox-cli snapshot -i
 
 | Reference | When to Use |
 |-----------|-------------|
+| [camoufox-cli documentation](https://github.com/Bin-Huang/camoufox-cli) | Full README, setup guide, installation |
 | [references/snapshot-refs.md](references/snapshot-refs.md) | Ref lifecycle, invalidation rules, troubleshooting |
 | [references/commands.md](references/commands.md) | Full command reference with all options |

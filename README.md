@@ -35,7 +35,7 @@ camoufox-cli install --with-deps
 
 ### Agent Skill
 
-Install as an [agent skill](https://github.com/vercel-labs/skills) so AI agents (OpenClaw, Claude Code, Cursor, Codex, etc.) automatically use camoufox-cli for anti-detect browser tasks:
+Install as an agent skill so AI agents (OpenClaw, Claude Code, Cursor, Codex, etc.) automatically use camoufox-cli for anti-detect browser tasks:
 
 ```bash
 npx skills add Bin-Huang/camoufox-cli
