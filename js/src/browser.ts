@@ -15,6 +15,21 @@ function ensureBrowserInstalled(): void {
   }
 }
 
+function isBetterSqliteBindingsRootError(error: unknown): boolean {
+  const message = error instanceof Error
+    ? `${error.message}\n${error.stack ?? ""}`
+    : String(error);
+
+  return message.includes("Could not find module root given file:")
+    && message.includes("better-sqlite3");
+}
+
+function writeFallbackWarning(): void {
+  process.stderr.write(
+    "[camoufox-cli] better-sqlite3 failed while loading WebGL data; retrying with WebGL spoofing disabled\n",
+  );
+}
+
 export class BrowserManager {
   refs = new RefRegistry();
   private browser: Browser | null = null;
@@ -34,14 +49,42 @@ export class BrowserManager {
     ensureBrowserInstalled();
 
     if (this.persistent) {
-      const opts = await launchOptions({ headless });
-      this.context = await firefox.launchPersistentContext(this.persistent, opts);
+      this.context = await this.launchPersistentContext(headless);
       const pages = this.context.pages();
       this.page = pages[0] || await this.context.newPage();
     } else {
-      this.browser = await Camoufox({ headless }) as Browser;
+      this.browser = await this.launchBrowser(headless);
       this.page = await this.browser.newPage();
       this.context = this.page.context();
+    }
+  }
+
+  private async launchBrowser(headless: boolean): Promise<Browser> {
+    try {
+      return await Camoufox({ headless }) as Browser;
+    } catch (error) {
+      if (!isBetterSqliteBindingsRootError(error)) {
+        throw error;
+      }
+
+      writeFallbackWarning();
+      const opts = await launchOptions({ headless, block_webgl: true });
+      return await firefox.launch(opts);
+    }
+  }
+
+  private async launchPersistentContext(headless: boolean): Promise<BrowserContext> {
+    try {
+      const opts = await launchOptions({ headless });
+      return await firefox.launchPersistentContext(this.persistent!, opts);
+    } catch (error) {
+      if (!isBetterSqliteBindingsRootError(error)) {
+        throw error;
+      }
+
+      writeFallbackWarning();
+      const opts = await launchOptions({ headless, block_webgl: true });
+      return await firefox.launchPersistentContext(this.persistent!, opts);
     }
   }
 
