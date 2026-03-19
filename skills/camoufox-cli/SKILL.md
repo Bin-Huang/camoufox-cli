@@ -87,7 +87,7 @@ camoufox-cli text body               # Get all page text (CSS selector)
 camoufox-cli eval "document.title"   # Execute JavaScript
 
 # Capture
-camoufox-cli screenshot              # Screenshot to stdout (base64)
+camoufox-cli screenshot              # Screenshot as JSON {"base64": "..."}
 camoufox-cli screenshot page.png     # Screenshot to file
 camoufox-cli screenshot --full p.png # Full page screenshot
 camoufox-cli pdf output.pdf          # Save page as PDF
@@ -261,7 +261,7 @@ camoufox-cli click @e5              # Navigates away
 camoufox-cli click @e3              # STALE REF - wrong element!
 ```
 
-For detailed ref documentation, see [references/snapshot-refs.md](references/snapshot-refs.md).
+Always take a fresh snapshot before interacting with elements after navigation or page changes.
 
 ## Troubleshooting
 
@@ -315,10 +315,6 @@ camoufox-cli snapshot -i
 --persistent <path>    Use persistent browser profile directory
 ```
 
-## Deep-Dive Documentation
+## Documentation
 
-| Reference | When to Use |
-|-----------|-------------|
-| [camoufox-cli documentation](https://github.com/Bin-Huang/camoufox-cli) | Full README, setup guide, installation |
-| [references/snapshot-refs.md](references/snapshot-refs.md) | Ref lifecycle, invalidation rules, troubleshooting |
-| [references/commands.md](references/commands.md) | Full command reference with all options |
+- [camoufox-cli documentation](https://github.com/Bin-Huang/camoufox-cli) -- Full README, setup guide, installation, and command reference
