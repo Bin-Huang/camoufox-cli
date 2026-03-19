@@ -99,7 +99,7 @@ camoufox-cli press "Control+a"            # Key combination
 camoufox-cli text @e1                     # Get text content of element
 camoufox-cli text body                    # Get all page text
 camoufox-cli eval "document.title"        # Execute JavaScript
-camoufox-cli screenshot                   # Screenshot (base64 to stdout)
+camoufox-cli screenshot                   # Screenshot (JSON with base64)
 camoufox-cli screenshot page.png          # Screenshot to file
 camoufox-cli screenshot --full page.png   # Full page screenshot
 ```
