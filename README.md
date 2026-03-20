@@ -15,6 +15,12 @@ OpenClaw, Claude Code, Cursor, Codex, and any agent that can run shell commands.
 
 ## Install
 
+Tell your AI agent (e.g. OpenClaw):
+
+> Install the CLI and skills from https://github.com/Bin-Huang/camoufox-cli
+
+Or install manually:
+
 ```bash
 npm install -g camoufox-cli
 camoufox-cli install              # Download browser
