@@ -1,6 +1,6 @@
 {
   "name": "camoufox-cli",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Anti-detect headless browser automation CLI for AI agents, powered by Camoufox",
   "type": "module",
   "bin": {
@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "node scripts/postinstall.js",
-    "prepublishOnly": "cp ../README.md . && npm run build"
+    "prepublishOnly": "cp ../README.md ../LICENSE . && npm run build"
   },
   "keywords": [
     "browser",
@@ -24,6 +24,8 @@
   "author": "Benn Huang",
   "license": "MIT",
   "repository": "https://github.com/Bin-Huang/camoufox-cli",
+  "homepage": "https://github.com/Bin-Huang/camoufox-cli",
+  "bugs": "https://github.com/Bin-Huang/camoufox-cli/issues",
   "dependencies": {
     "camoufox-js": "^0.8.5",
     "pdf-lib": "^1.17.1",
@@ -39,6 +41,7 @@
   },
   "files": [
     "dist",
-    "scripts"
+    "scripts",
+    "LICENSE"
   ]
 }
