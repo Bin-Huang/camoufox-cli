@@ -188,6 +188,13 @@ def build_command(action: str, rest: list[str]) -> dict:
         case "press":
             key = _require(rest, 1, "Usage: camoufox-cli press Enter")
             return {"id": "r1", "action": "press", "params": {"key": key}}
+        case "upload":
+            ref = _require(rest, 1, "Usage: camoufox-cli upload @ref file1 file2...")
+            files = rest[2:]
+            if not files:
+                print("Usage: camoufox-cli upload @ref file1 file2...", file=sys.stderr)
+                sys.exit(1)
+            return {"id": "r1", "action": "upload", "params": {"ref": ref, "files": [os.path.abspath(f) for f in files]}}
 
         # Data extraction
         case "text":
@@ -441,6 +448,7 @@ Interaction:
   check @ref              Toggle checkbox
   hover @ref              Hover over element
   press <key>             Press key (e.g. Enter, Control+a)
+  upload @ref <f...>      Upload file(s) to input[@type=file]
 
 Data:
   text @ref|selector      Get text content

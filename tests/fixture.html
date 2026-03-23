@@ -15,7 +15,10 @@
     </select>
     <label for="agree">Agree</label>
     <input id="agree" type="checkbox">
+    <label for="file">File</label>
+    <input id="file" type="file" onchange="document.getElementById('output').textContent='uploaded:' + this.files[0].name">
     <button type="button" id="btn" onclick="document.getElementById('output').textContent='clicked'">Submit</button>
+
   </form>
   <p id="output">ready</p>
 </body>

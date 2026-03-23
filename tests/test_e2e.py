@@ -121,13 +121,30 @@ class TestE2E:
 
     def test_click_button(self, daemon):
         resp = cmd(daemon, "snapshot")
-        ref = find_ref(resp["data"]["snapshot"], "button")
+        ref = find_ref(resp["data"]["snapshot"], "button \"Submit\"")
 
         resp = cmd(daemon, "click", {"ref": ref})
         assert resp["success"] is True
 
         resp = cmd(daemon, "eval", {"expression": "document.getElementById('output').textContent"})
         assert resp["data"]["result"] == "clicked"
+
+    def test_upload_file(self, daemon, tmp_path):
+        resp = cmd(daemon, "snapshot")
+        # File input is recognized as a button by aria-snapshot
+        ref = find_ref(resp["data"]["snapshot"], "button \"File\"")
+
+        # Create a dummy file to upload
+        file_path = str(tmp_path / "test-upload.txt")
+        with open(file_path, "w") as f:
+            f.write("test content")
+
+        resp = cmd(daemon, "upload", {"ref": ref, "files": [file_path]})
+        assert resp["success"] is True
+
+        resp = cmd(daemon, "eval", {"expression": "document.getElementById('output').textContent"})
+        # The fixture updates #output to 'uploaded:' + name
+        assert resp["data"]["result"] == "uploaded:test-upload.txt"
 
     def test_select_dropdown(self, daemon):
         resp = cmd(daemon, "snapshot")

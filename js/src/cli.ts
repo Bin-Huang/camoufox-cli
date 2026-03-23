@@ -86,6 +86,20 @@ export function listSessions(): string[] {
   return sessions.sort();
 }
 
+export function isDirectRun(
+  argv1: string | undefined,
+  moduleUrl: string,
+  realpath: (target: string) => string = fs.realpathSync,
+): boolean {
+  if (!argv1) return false;
+
+  try {
+    return realpath(argv1) === realpath(fileURLToPath(moduleUrl));
+  } catch {
+    return path.resolve(argv1) === path.resolve(fileURLToPath(moduleUrl));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Arg parsing
 // ---------------------------------------------------------------------------
@@ -104,6 +118,10 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
 
   let i = 0;
   while (i < argv.length) {
+    if (argv[i] === "--help" || argv[i] === "-h") {
+      console.log(USAGE);
+      process.exit(0);
+    }
     switch (argv[i]) {
       case "--session":
         flags.session = argv[++i] ?? (process.stderr.write("Error: --session requires a value\n"), process.exit(1), "");
@@ -145,6 +163,9 @@ function require_(args: string[], idx: number, usage: string): string {
 
 export function buildCommand(action: string, rest: string[]): Record<string, unknown> {
   switch (action) {
+    case "help":
+      console.log(USAGE);
+      process.exit(0);
     case "open":
       return { id: "r1", action: "open", params: { url: require_(rest, 1, "Usage: camoufox-cli open <url>") } };
     case "back":
@@ -184,6 +205,15 @@ export function buildCommand(action: string, rest: string[]): Record<string, unk
       return { id: "r1", action: "hover", params: { ref: require_(rest, 1, "Usage: camoufox-cli hover @e1") } };
     case "press":
       return { id: "r1", action: "press", params: { key: require_(rest, 1, "Usage: camoufox-cli press Enter") } };
+    case "upload": {
+      const ref = require_(rest, 1, "Usage: camoufox-cli upload @ref file1 file2...");
+      const files = rest.slice(2);
+      if (files.length === 0) {
+        process.stderr.write("Usage: camoufox-cli upload @ref file1 file2...\n");
+        process.exit(1);
+      }
+      return { id: "r1", action: "upload", params: { ref, files: files.map(f => path.resolve(f)) } };
+    }
 
     case "text":
       return { id: "r1", action: "text", params: { target: require_(rest, 1, "Usage: camoufox-cli text @e1") } };
@@ -344,9 +374,10 @@ async function main() {
 
   // Client-side: install
   if (action === "install") {
-    process.stderr.write("[camoufox-cli] Downloading browser...\n");
+    console.log("[camoufox-cli] Installing or updating browser binaries...");
     execFileSync("npx", ["camoufox-js", "fetch"], { stdio: "inherit" });
-    process.stderr.write("[camoufox-cli] Browser installed.\n");
+    const installPath = execFileSync("npx", ["camoufox-js", "path"], { encoding: "utf8" }).trim();
+    console.log(`[camoufox-cli] Browser ready at ${installPath}`);
     if ((command.params as any)?.with_deps) {
       installSystemDeps();
     }
@@ -422,6 +453,7 @@ Interaction:
   check @ref              Toggle checkbox
   hover @ref              Hover over element
   press <key>             Press key (e.g. Enter, Control+a)
+  upload @ref <f...>      Upload file(s) to input[@type=file]
 
 Data:
   text @ref|selector      Get text content
@@ -452,10 +484,5 @@ Flags:
   --json               Output as JSON
   --persistent <path>  Use persistent browser profile`;
 
-const isDirectRun = (() => {
-  try {
-    return process.argv[1] &&
-      fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
-  } catch { return false; }
-})();
-if (isDirectRun) main();
+if (isDirectRun(process.argv[1], import.meta.url)) main();
+

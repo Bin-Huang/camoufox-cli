@@ -111,7 +111,8 @@ describe("e2e", { timeout: 120_000 }, () => {
 
   it("click button", async () => {
     const snap = await cmd(SOCK_PATH, "snapshot");
-    const ref = findRef(snap.data.snapshot, "button");
+    const ref = findRef(snap.data.snapshot, "button \"Submit\"");
+
 
     const clickResp = await cmd(SOCK_PATH, "click", { ref });
     expect(clickResp.success).toBe(true);
@@ -167,7 +168,29 @@ describe("e2e", { timeout: 120_000 }, () => {
     expect(resp.success).toBe(true);
   });
 
+  it("upload file", async () => {
+    const snap = await cmd(SOCK_PATH, "snapshot");
+    // File input is recognized as a button by aria-snapshot
+    const ref = findRef(snap.data.snapshot, "button \"File\"");
+
+
+    // Create a dummy file to upload
+    const filePath = path.join(__dirname, "test-upload.txt");
+    fs.writeFileSync(filePath, "test content");
+
+    try {
+      const uploadResp = await cmd(SOCK_PATH, "upload", { ref, files: [filePath] });
+      expect(uploadResp.success).toBe(true);
+
+      const evalResp = await cmd(SOCK_PATH, "eval", { expression: "document.getElementById('output').textContent" });
+      expect(evalResp.data.result).toBe("uploaded:test-upload.txt");
+    } finally {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+  });
+
   it("back and forward", async () => {
+
     // Navigate to second page (use data: URI since about:blank may fail)
     const openResp = await cmd(SOCK_PATH, "open", { url: "data:text/html,<h1>Page2</h1>" });
     expect(openResp.success).toBe(true);
