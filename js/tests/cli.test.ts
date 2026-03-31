@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buildCommand, getSocketPath } from "../src/cli.js";
+import { buildCommand, getSocketPath, parseArgs } from "../src/cli.js";
 
 // buildCommand calls process.exit on error; mock it to throw instead
 beforeEach(() => {
@@ -254,6 +254,32 @@ describe("buildCommand", () => {
   it("all commands have id=r1", () => {
     const cmd = buildCommand("back", ["back"]);
     expect(cmd.id).toBe("r1");
+  });
+});
+
+describe("parseArgs", () => {
+  it("defaults", () => {
+    const { flags } = parseArgs(["open", "https://example.com"]);
+    expect(flags.session).toBe("default");
+    expect(flags.headed).toBe(false);
+    expect(flags.timeout).toBe(1800);
+    expect(flags.json).toBe(false);
+    expect(flags.persistent).toBeNull();
+    expect(flags.proxy).toBeNull();
+  });
+
+  it("--proxy flag", () => {
+    const { flags } = parseArgs(["--proxy", "http://127.0.0.1:8080", "open", "https://example.com"]);
+    expect(flags.proxy).toBe("http://127.0.0.1:8080");
+  });
+
+  it("--proxy with auth", () => {
+    const { flags } = parseArgs(["--proxy", "http://user:pass@host:8080", "open", "https://example.com"]);
+    expect(flags.proxy).toBe("http://user:pass@host:8080");
+  });
+
+  it("--proxy missing value exits", () => {
+    expect(() => parseArgs(["--proxy"])).toThrow("process.exit");
   });
 });
 

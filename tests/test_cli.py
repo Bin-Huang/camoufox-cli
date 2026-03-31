@@ -190,6 +190,7 @@ class TestParseArgs:
         assert flags["timeout"] == 1800
         assert flags["json"] is False
         assert flags["persistent"] is None
+        assert flags["proxy"] is None
 
     def test_session_flag(self):
         flags, cmd = parse_args(["--session", "mysession", "open", "https://example.com"])
@@ -210,6 +211,18 @@ class TestParseArgs:
     def test_persistent_flag(self):
         flags, cmd = parse_args(["--persistent", "/tmp/profile", "open", "https://example.com"])
         assert flags["persistent"] == "/tmp/profile"
+
+    def test_proxy_flag(self):
+        flags, cmd = parse_args(["--proxy", "http://127.0.0.1:8080", "open", "https://example.com"])
+        assert flags["proxy"] == "http://127.0.0.1:8080"
+
+    def test_proxy_flag_with_auth(self):
+        flags, cmd = parse_args(["--proxy", "http://user:pass@host:8080", "open", "https://example.com"])
+        assert flags["proxy"] == "http://user:pass@host:8080"
+
+    def test_missing_proxy_value(self):
+        with pytest.raises(SystemExit):
+            parse_args(["--proxy"])
 
     def test_multiple_flags(self):
         flags, cmd = parse_args(["--headed", "--json", "--session", "s1", "snapshot", "-i"])

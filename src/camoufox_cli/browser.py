@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from camoufox.sync_api import Camoufox
 from playwright.sync_api import BrowserContext, Page
 
@@ -20,13 +22,14 @@ def _ensure_browser_installed() -> None:
 
 
 class BrowserManager:
-    def __init__(self, persistent: str | None = None):
+    def __init__(self, persistent: str | None = None, proxy: str | None = None):
         self._camoufox: Camoufox | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
         self.refs = RefRegistry()
         self._headless: bool = True
         self._persistent = persistent
+        self._proxy = proxy
         # Camoufox spoofs history API for anti-fingerprinting,
         # so we track navigation history ourselves.
         self._history: list[str] = []
@@ -40,6 +43,25 @@ class BrowserManager:
         _ensure_browser_installed()
 
         kwargs: dict = {"headless": headless}
+        if self._proxy:
+            parsed = urlparse(self._proxy)
+            if parsed.scheme not in ("http", "https"):
+                raise ValueError(
+                    f"Unsupported proxy scheme: {parsed.scheme}. Only http:// and https:// proxies are supported."
+                )
+            if not parsed.hostname:
+                raise ValueError(
+                    f"Invalid proxy URL: {self._proxy}. Expected format: http://host:port"
+                )
+            host_port = parsed.hostname
+            if parsed.port:
+                host_port += f":{parsed.port}"
+            proxy: dict = {"server": f"{parsed.scheme}://{host_port}"}
+            if parsed.username:
+                proxy["username"] = parsed.username
+            if parsed.password:
+                proxy["password"] = parsed.password
+            kwargs["proxy"] = proxy
         if self._persistent:
             kwargs["persistent_context"] = True
             kwargs["user_data_dir"] = self._persistent

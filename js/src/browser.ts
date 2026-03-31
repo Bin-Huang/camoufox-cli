@@ -21,11 +21,13 @@ export class BrowserManager {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
   private persistent: string | null;
+  private proxy: string | null;
   private history: string[] = [];
   private historyIndex = -1;
 
-  constructor(persistent: string | null = null) {
+  constructor(persistent: string | null = null, proxy: string | null = null) {
     this.persistent = persistent;
+    this.proxy = proxy;
   }
 
   async launch(headless: boolean = true): Promise<void> {
@@ -33,13 +35,30 @@ export class BrowserManager {
 
     ensureBrowserInstalled();
 
+    if (this.proxy) {
+      if (!this.proxy.includes("://")) {
+        throw new Error(
+          `Invalid proxy URL: ${this.proxy}. Expected format: http://host:port`
+        );
+      }
+      const scheme = this.proxy.split("://")[0].toLowerCase();
+      if (scheme !== "http" && scheme !== "https") {
+        throw new Error(
+          `Unsupported proxy scheme: ${scheme}. Only http:// and https:// proxies are supported.`
+        );
+      }
+    }
+
+    const launchOpts: Record<string, unknown> = { headless };
+    if (this.proxy) launchOpts.proxy = this.proxy;
+
     if (this.persistent) {
-      const opts = await launchOptions({ headless });
+      const opts = await launchOptions(launchOpts);
       this.context = await firefox.launchPersistentContext(this.persistent, opts);
       const pages = this.context.pages();
       this.page = pages[0] || await this.context.newPage();
     } else {
-      this.browser = await Camoufox({ headless }) as Browser;
+      this.browser = await Camoufox(launchOpts) as Browser;
       this.page = await this.browser.newPage();
       this.context = this.page.context();
     }
