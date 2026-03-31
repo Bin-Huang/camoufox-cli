@@ -17,13 +17,13 @@ export class DaemonServer {
   private lastActivity = Date.now();
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(opts: { session?: string; headless?: boolean; timeout?: number; persistent?: string | null }) {
+  constructor(opts: { session?: string; headless?: boolean; timeout?: number; persistent?: string | null; proxy?: string | null }) {
     this.session = opts.session ?? "default";
     this.headless = opts.headless ?? true;
     this.timeout = opts.timeout ?? 1800;
     this.socketPath = `/tmp/camoufox-cli-${this.session}.sock`;
     this.pidPath = `/tmp/camoufox-cli-${this.session}.pid`;
-    this.manager = new BrowserManager(opts.persistent ?? null);
+    this.manager = new BrowserManager(opts.persistent ?? null, opts.proxy ?? null);
   }
 
   async start(): Promise<void> {

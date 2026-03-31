@@ -314,6 +314,7 @@ camoufox-cli snapshot -i
 --timeout <seconds>    Daemon idle timeout (default: 1800)
 --json                 Output as JSON instead of human-readable
 --persistent <path>    Use persistent browser profile directory
+--proxy <url>          Proxy server (e.g. http://host:port or http://user:pass@host:port)
 ```
 
 ## Documentation

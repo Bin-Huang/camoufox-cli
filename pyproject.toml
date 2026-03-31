@@ -39,3 +39,8 @@ packages = ["src/camoufox_cli"]
 markers = [
     "integration: tests that launch a real browser (slow, requires camoufox)",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

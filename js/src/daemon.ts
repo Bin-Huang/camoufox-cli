@@ -14,8 +14,9 @@ const session = getArg("--session", "default");
 const headless = !args.includes("--headed");
 const timeout = parseInt(getArg("--timeout", "1800"), 10);
 const persistent = args.includes("--persistent") ? getArg("--persistent", "") || null : null;
+const proxy = args.includes("--proxy") ? getArg("--proxy", "") || null : null;
 
-const server = new DaemonServer({ session, headless, timeout, persistent });
+const server = new DaemonServer({ session, headless, timeout, persistent, proxy });
 
 process.stderr.write(`[camoufox-cli] Starting daemon session=${session} headless=${headless}\n`);
 server.start().catch((err) => {
