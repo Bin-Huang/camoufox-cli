@@ -120,6 +120,6 @@ camoufox-cli --session <name> ...    # Isolated browser session
 camoufox-cli --headed ...            # Show browser window (not headless)
 camoufox-cli --json ...              # JSON output for parsing
 camoufox-cli --timeout <seconds> ... # Daemon idle timeout (default: 1800)
-camoufox-cli --persistent <path> ... # Use persistent browser profile directory
+camoufox-cli --persistent [path] ... # Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
 camoufox-cli --proxy <url> ...      # Proxy server (e.g. http://host:port or http://user:pass@host:port)
 ```

@@ -114,11 +114,12 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
         elif args[i] == "--json":
             flags["json"] = True
         elif args[i] == "--persistent":
-            i += 1
-            if i >= len(args):
-                print("Error: --persistent requires a value", file=sys.stderr)
-                sys.exit(1)
-            flags["persistent"] = args[i]
+            # Optional value: if next arg looks like a path, use it; otherwise use default
+            if i + 1 < len(args) and ("/" in args[i + 1] or args[i + 1].startswith((".", "~"))):
+                i += 1
+                flags["persistent"] = args[i]
+            else:
+                flags["persistent"] = ""
         elif args[i] == "--proxy":
             i += 1
             if i >= len(args):
@@ -365,6 +366,10 @@ def main():
     args = sys.argv[1:]
     flags, command = parse_args(args)
 
+    # Resolve default persistent path
+    if flags["persistent"] == "":
+        flags["persistent"] = os.path.expanduser(f"~/.camoufox-cli/profiles/{flags['session']}")
+
     action = command.get("action", "")
 
     # Client-side: install
@@ -477,5 +482,5 @@ Flags:
   --headed             Show browser window
   --timeout <secs>     Daemon idle timeout (default: 1800)
   --json               Output as JSON
-  --persistent <path>  Use persistent browser profile
+  --persistent [path]  Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
   --proxy <url>        Proxy server (e.g. http://host:port)"""

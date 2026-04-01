@@ -119,9 +119,16 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
       case "--json":
         flags.json = true;
         break;
-      case "--persistent":
-        flags.persistent = argv[++i] ?? null;
+      case "--persistent": {
+        // Optional value: if next arg looks like a path, use it; otherwise use default
+        const next = argv[i + 1];
+        if (next && (next.includes("/") || next.startsWith(".") || next.startsWith("~"))) {
+          flags.persistent = argv[++i];
+        } else {
+          flags.persistent = "";
+        }
         break;
+      }
       case "--proxy":
         flags.proxy = argv[++i] ?? null;
         break;
@@ -345,6 +352,11 @@ async function main() {
   const argv = process.argv.slice(2);
   const { flags, command } = parseArgs(argv);
 
+  // Resolve default persistent path
+  if (flags.persistent === "") {
+    flags.persistent = path.join(os.homedir(), ".camoufox-cli", "profiles", flags.session);
+  }
+
   const action = command.action as string;
 
   // Client-side: install
@@ -455,7 +467,7 @@ Flags:
   --headed             Show browser window
   --timeout <secs>     Daemon idle timeout (default: 1800)
   --json               Output as JSON
-  --persistent <path>  Use persistent browser profile
+  --persistent [path]  Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
   --proxy <url>        Proxy server (e.g. http://host:port)`;
 
 const isDirectRun = (() => {

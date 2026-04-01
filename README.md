@@ -151,7 +151,7 @@ camoufox-cli cookies export file.json     # Export cookies
 --headed               Show browser window (default: headless)
 --timeout <seconds>    Daemon idle timeout (default: 1800)
 --json                 Output as JSON
---persistent <path>    Use persistent browser profile directory
+--persistent [path]    Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
 --proxy <url>          Proxy server (e.g. http://host:port or http://user:pass@host:port)
 ```
 
