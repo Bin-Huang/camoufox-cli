@@ -1,10 +1,11 @@
-/** Unix socket server for the camoufox-cli daemon. */
+/** IPC server for the camoufox-cli daemon. */
 
 import * as net from "node:net";
 import * as fs from "node:fs";
 import { BrowserManager } from "./browser.js";
 import { execute } from "./commands.js";
 import { parseCommand, serializeResponse } from "./protocol.js";
+import { getPidPath, getSocketPath, isFilesystemSocketPath } from "./ipc.js";
 
 export class DaemonServer {
   private session: string;
@@ -21,8 +22,8 @@ export class DaemonServer {
     this.session = opts.session ?? "default";
     this.headless = opts.headless ?? true;
     this.timeout = opts.timeout ?? 1800;
-    this.socketPath = `/tmp/camoufox-cli-${this.session}.sock`;
-    this.pidPath = `/tmp/camoufox-cli-${this.session}.pid`;
+    this.socketPath = getSocketPath(this.session);
+    this.pidPath = getPidPath(this.session);
     this.manager = new BrowserManager(opts.persistent ?? null, opts.proxy ?? null);
   }
 
@@ -62,6 +63,16 @@ export class DaemonServer {
     let data = "";
     let handled = false;
 
+    conn.on("error", (error: any) => {
+      const code = error?.code;
+      if (code === "EPIPE" || code === "ECONNRESET" || code === "ERR_STREAM_DESTROYED") {
+        return;
+      }
+
+      process.stderr.write(`[camoufox-cli] Connection error: ${String(error)}\n`);
+      try { conn.destroy(); } catch {}
+    });
+
     const processData = async () => {
       if (handled) return;
       const nlIdx = data.indexOf("\n");
@@ -80,13 +91,13 @@ export class DaemonServer {
         }
 
         const response = await execute(this.manager, command as any);
-        conn.end(serializeResponse(response));
+        this.reply(conn, serializeResponse(response));
 
         if (command.action === "close") {
           this.server?.close();
         }
       } catch (e: any) {
-        conn.end(Buffer.from(JSON.stringify({ id: "?", success: false, error: String(e) }) + "\n"));
+        this.reply(conn, Buffer.from(JSON.stringify({ id: "?", success: false, error: String(e) }) + "\n"));
       }
     };
 
@@ -95,7 +106,28 @@ export class DaemonServer {
       processData();
     });
 
-    conn.on("end", () => { processData(); });
+    conn.on("end", () => {
+      processData();
+      if (!handled) {
+        conn.destroy();
+      }
+    });
+  }
+
+  private reply(conn: net.Socket, payload: Buffer): void {
+    if (conn.destroyed) {
+      return;
+    }
+
+    try {
+      conn.end(payload);
+    } catch (error: any) {
+      const code = error?.code;
+      if (code === "EPIPE" || code === "ERR_STREAM_DESTROYED") {
+        return;
+      }
+      throw error;
+    }
   }
 
   private cleanupStale(): void {
@@ -110,7 +142,9 @@ export class DaemonServer {
           // Stale pid, clean up
         }
       }
-      fs.unlinkSync(this.socketPath);
+      if (isFilesystemSocketPath(this.socketPath)) {
+        fs.unlinkSync(this.socketPath);
+      }
     }
   }
 
@@ -125,6 +159,9 @@ export class DaemonServer {
       try { this.server.close(); } catch {}
     }
     for (const p of [this.socketPath, this.pidPath]) {
+      if (p === this.socketPath && !isFilesystemSocketPath(this.socketPath)) {
+        continue;
+      }
       try { fs.unlinkSync(p); } catch {}
     }
   }

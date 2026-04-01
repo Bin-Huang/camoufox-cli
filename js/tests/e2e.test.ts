@@ -8,31 +8,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DaemonServer } from "../src/server.js";
+import { sendCommand } from "../src/cli.js";
+import { getPidPath, getSocketPath, isFilesystemSocketPath } from "../src/ipc.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = path.resolve(__dirname, "../../tests/fixture.html");
 const FIXTURE_URL = `file://${FIXTURE_PATH}`;
 
 const TEST_SESSION = `e2e-${process.pid}-${Date.now()}`;
-const SOCK_PATH = `/tmp/camoufox-cli-${TEST_SESSION}.sock`;
-
-function sendCommand(sockPath: string, cmd: Record<string, unknown>): Promise<Record<string, any>> {
-  return new Promise((resolve, reject) => {
-    const client = net.createConnection(sockPath, () => {
-      client.end(JSON.stringify(cmd) + "\n");
-    });
-    let data = "";
-    client.on("data", chunk => { data += chunk.toString(); });
-    client.on("end", () => {
-      try {
-        resolve(JSON.parse(data.trim()));
-      } catch (e) {
-        reject(new Error(`Failed to parse response: ${data}`));
-      }
-    });
-    client.on("error", reject);
-  });
-}
+const SOCK_PATH = getSocketPath(TEST_SESSION);
 
 function cmd(sockPath: string, action: string, params: Record<string, unknown> = {}, id = "r1") {
   return sendCommand(sockPath, { id, action, params });
@@ -41,10 +25,18 @@ function cmd(sockPath: string, action: string, params: Record<string, unknown> =
 async function waitForSocket(sockPath: string, timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (fs.existsSync(sockPath)) return;
+    const ready = await new Promise<boolean>((resolve) => {
+      const client = net.createConnection(sockPath, () => {
+        client.destroy();
+        resolve(true);
+      });
+      client.on("error", () => resolve(false));
+    });
+
+    if (ready) return;
     await new Promise(r => setTimeout(r, 100));
   }
-  throw new Error(`Socket ${sockPath} not found after ${timeoutMs}ms`);
+  throw new Error(`Socket ${sockPath} not ready after ${timeoutMs}ms`);
 }
 
 function findRef(snapshot: string, role: string): string {
@@ -202,7 +194,8 @@ describe("e2e", { timeout: 120_000 }, () => {
 describe("e2e close shuts down daemon", { timeout: 30_000 }, () => {
   it("close command stops daemon", async () => {
     const session = `e2e-close-${process.pid}-${Date.now()}`;
-    const sockPath = `/tmp/camoufox-cli-${session}.sock`;
+    const sockPath = getSocketPath(session);
+    const pidPath = getPidPath(session);
     const server = new DaemonServer({ session, headless: true, timeout: 60 });
     const promise = server.start();
     await waitForSocket(sockPath);
@@ -211,6 +204,9 @@ describe("e2e close shuts down daemon", { timeout: 30_000 }, () => {
     expect(resp.success).toBe(true);
 
     await promise;
-    expect(fs.existsSync(sockPath)).toBe(false);
+    expect(fs.existsSync(pidPath)).toBe(false);
+    if (isFilesystemSocketPath(sockPath)) {
+      expect(fs.existsSync(sockPath)).toBe(false);
+    }
   });
 });
