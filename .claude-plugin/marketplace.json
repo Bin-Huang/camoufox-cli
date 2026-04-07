@@ -4,7 +4,7 @@
     "name": "Benn Huang"
   },
   "metadata": {
-    "description": "Anti-detect browser automation CLI for AI agents, powered by Camoufox",
+    "description": "Anti-detect browser automation CLI & Skills for AI agents, powered by Camoufox",
     "version": "0.1.0"
   },
   "plugins": [

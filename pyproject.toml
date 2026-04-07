@@ -1,7 +1,7 @@
 [project]
 name = "camoufox-cli"
 version = "0.2.0"
-description = "Anti-detect browser CLI for AI agents, powered by Camoufox"
+description = "Anti-detect browser CLI & Skills for AI agents, powered by Camoufox"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "Benn Huang" }]
