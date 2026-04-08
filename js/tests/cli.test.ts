@@ -1,5 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buildCommand, getSocketPath, parseArgs } from "../src/cli.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as fs from "node:fs";
+import * as net from "node:net";
+import { buildCommand, getSocketPath, listSessions, parseArgs, sendCommand, waitForSessionShutdown } from "../src/cli.js";
+import { getPidPath } from "../src/ipc.js";
 
 // buildCommand calls process.exit on error; mock it to throw instead
 beforeEach(() => {
@@ -7,6 +10,10 @@ beforeEach(() => {
     throw new Error(`process.exit(${code})`);
   });
   vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("buildCommand", () => {
@@ -285,10 +292,111 @@ describe("parseArgs", () => {
 
 describe("getSocketPath", () => {
   it("default session", () => {
-    expect(getSocketPath("default")).toBe("/tmp/camoufox-cli-default.sock");
+    expect(getSocketPath("default")).toBe(
+      process.platform === "win32"
+        ? "\\\\.\\pipe\\camoufox-cli-default.sock"
+        : "/tmp/camoufox-cli-default.sock",
+    );
   });
 
   it("custom session", () => {
-    expect(getSocketPath("my-session")).toBe("/tmp/camoufox-cli-my-session.sock");
+    expect(getSocketPath("my-session")).toBe(
+      process.platform === "win32"
+        ? "\\\\.\\pipe\\camoufox-cli-my-session.sock"
+        : "/tmp/camoufox-cli-my-session.sock",
+    );
+  });
+});
+
+describe("listSessions", () => {
+  it("discovers sessions from pid files", () => {
+    const session = `test-${process.pid}-${Date.now()}`;
+    const pidPath = getPidPath(session);
+
+    fs.writeFileSync(pidPath, String(process.pid));
+
+    try {
+      expect(listSessions()).toContain(session);
+    } finally {
+      try {
+        fs.unlinkSync(pidPath);
+      } catch {}
+    }
+  });
+
+  it("ignores stale pid files", () => {
+    const session = `stale-${process.pid}-${Date.now()}`;
+    const pidPath = getPidPath(session);
+
+    fs.writeFileSync(pidPath, "999999");
+
+    try {
+      expect(listSessions()).not.toContain(session);
+    } finally {
+      try {
+        fs.unlinkSync(pidPath);
+      } catch {}
+    }
+  });
+});
+
+describe("sendCommand", () => {
+  it("resolves after a newline-delimited response without waiting for socket end", async () => {
+    const session = `send-${process.pid}-${Date.now()}`;
+    const sockPath = getSocketPath(session);
+    let activeSocket: net.Socket | null = null;
+    const server = net.createServer({ allowHalfOpen: true }, (socket) => {
+      activeSocket = socket;
+      socket.on("data", () => {
+        socket.write('{"id":"r1","success":true}\n');
+      });
+    });
+
+    await new Promise<void>((resolve) => server.listen(sockPath, resolve));
+
+    try {
+      await expect(sendCommand(sockPath, { id: "r1", action: "noop", params: {} })).resolves.toMatchObject({
+        id: "r1",
+        success: true,
+      });
+    } finally {
+      activeSocket?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});
+
+describe("waitForSessionShutdown", () => {
+  it("waits for the session pid to disappear before resolving", async () => {
+    vi.useFakeTimers();
+
+    const session = `shutdown-${process.pid}-${Date.now()}`;
+    const pidPath = getPidPath(session);
+    fs.writeFileSync(pidPath, "424242");
+
+    let killChecks = 0;
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => {
+      killChecks += 1;
+      if (killChecks < 3) {
+        return true;
+      }
+
+      const error = new Error("ESRCH") as NodeJS.ErrnoException;
+      error.code = "ESRCH";
+      throw error;
+    });
+
+    try {
+      const waitPromise = waitForSessionShutdown(session, 500, 100);
+      await vi.advanceTimersByTimeAsync(250);
+      await expect(waitPromise).resolves.toBeUndefined();
+      expect(killSpy).toHaveBeenCalled();
+      expect(fs.existsSync(pidPath)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+      try {
+        fs.unlinkSync(pidPath);
+      } catch {}
+    }
   });
 });

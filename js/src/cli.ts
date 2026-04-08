@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** CLI client: parses args, starts daemon if needed, sends command via Unix socket. */
+/** CLI client: parses args, starts daemon, and sends commands over IPC. */
 
 import * as net from "node:net";
 import * as fs from "node:fs";
@@ -7,26 +7,62 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { getPidDir, getSessionFromPidFile, getSocketPath, isFilesystemSocketPath } from "./ipc.js";
+import { getCamoufoxJsCliPath, getNodeCommand } from "./runtime.js";
 
-const SOCKET_PREFIX = "/tmp/camoufox-cli-";
+export { getSocketPath } from "./ipc.js";
 
-export function getSocketPath(session: string): string {
-  return `${SOCKET_PREFIX}${session}.sock`;
-}
-
-function sendCommand(sockPath: string, command: Record<string, unknown>): Promise<Record<string, unknown>> {
+export function sendCommand(sockPath: string, command: Record<string, unknown>): Promise<Record<string, any>> {
   return new Promise((resolve, reject) => {
-    const client = net.createConnection(sockPath, () => {
-      client.end(JSON.stringify(command) + "\n");
+    const client = net.createConnection(sockPath);
+    let settled = false;
+    let data = "";
+
+    const finish = (handler: (value: any) => void, value: any) => {
+      if (settled) return;
+      settled = true;
+      client.destroy();
+      handler(value);
+    };
+
+    const parseResponse = () => {
+      const newlineIndex = data.indexOf("\n");
+      if (newlineIndex < 0) {
+        return false;
+      }
+
+      const line = data.slice(0, newlineIndex).trim();
+      if (!line) {
+        finish(reject, new Error(`Invalid response: ${data}`));
+        return true;
+      }
+
+      try {
+        finish(resolve, JSON.parse(line));
+      } catch {
+        finish(reject, new Error(`Invalid response: ${data}`));
+      }
+
+      return true;
+    };
+
+    client.on("connect", () => {
+      client.write(JSON.stringify(command) + "\n");
     });
 
-    let data = "";
-    client.on("data", (chunk) => { data += chunk.toString(); });
-    client.on("end", () => {
-      try { resolve(JSON.parse(data)); }
-      catch (e) { reject(new Error(`Invalid response: ${data}`)); }
+    client.on("data", (chunk) => {
+      data += chunk.toString();
+      parseResponse();
     });
-    client.on("error", reject);
+    client.on("end", () => {
+      if (!settled) {
+        parseResponse();
+      }
+      if (!settled) {
+        finish(reject, new Error(`Invalid response: ${data}`));
+      }
+    });
+    client.on("error", (error) => finish(reject, error));
   });
 }
 
@@ -39,7 +75,7 @@ function spawnDaemon(session: string, headed: boolean, timeout: number, persiste
   if (persistent) args.push("--persistent", persistent);
   if (proxy) args.push("--proxy", proxy);
 
-  spawn("node", [daemonPath, ...args], {
+  spawn(getNodeCommand(), [daemonPath, ...args], {
     detached: true,
     stdio: "ignore",
   }).unref();
@@ -48,6 +84,19 @@ function spawnDaemon(session: string, headed: boolean, timeout: number, persiste
   return new Promise((resolve, reject) => {
     let attempts = 0;
     const check = () => {
+      if (!isFilesystemSocketPath(sockPath)) {
+        const client = net.createConnection(sockPath, () => {
+          client.destroy();
+          resolve();
+        });
+        client.on("error", () => {
+          attempts++;
+          if (attempts >= 50) return reject(new Error("Daemon did not start within 5 seconds"));
+          setTimeout(check, 100);
+        });
+        return;
+      }
+
       if (fs.existsSync(sockPath)) return resolve();
       attempts++;
       if (attempts >= 50) return reject(new Error("Daemon did not start within 5 seconds"));
@@ -59,7 +108,7 @@ function spawnDaemon(session: string, headed: boolean, timeout: number, persiste
 
 async function ensureDaemon(session: string, headed: boolean, timeout: number, persistent: string | null, proxy: string | null = null): Promise<void> {
   const sockPath = getSocketPath(session);
-  if (fs.existsSync(sockPath)) {
+  if (!isFilesystemSocketPath(sockPath) || fs.existsSync(sockPath)) {
     // Verify daemon is alive
     try {
       await new Promise<void>((resolve, reject) => {
@@ -69,7 +118,9 @@ async function ensureDaemon(session: string, headed: boolean, timeout: number, p
       });
       return;
     } catch {
-      try { fs.unlinkSync(sockPath); } catch {}
+      if (isFilesystemSocketPath(sockPath)) {
+        try { fs.unlinkSync(sockPath); } catch {}
+      }
     }
   }
   await spawnDaemon(session, headed, timeout, persistent, proxy);
@@ -78,13 +129,44 @@ async function ensureDaemon(session: string, headed: boolean, timeout: number, p
 export function listSessions(): string[] {
   const sessions: string[] = [];
   try {
-    for (const name of fs.readdirSync("/tmp")) {
-      if (name.startsWith("camoufox-cli-") && name.endsWith(".sock")) {
-        sessions.push(name.slice("camoufox-cli-".length, -".sock".length));
+    for (const name of fs.readdirSync(getPidDir())) {
+      const session = getSessionFromPidFile(name);
+      if (session && isSessionRunning(session)) {
+        sessions.push(session);
       }
     }
   } catch {}
   return sessions.sort();
+}
+
+function isSessionRunning(session: string): boolean {
+  const pidPath = path.join(getPidDir(), `camoufox-cli-${session}.pid`);
+
+  try {
+    const pid = parseInt(fs.readFileSync(pidPath, "utf-8").trim(), 10);
+    if (!Number.isInteger(pid)) {
+      return false;
+    }
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    try { fs.unlinkSync(pidPath); } catch {}
+    return false;
+  }
+}
+
+export async function waitForSessionShutdown(session: string, timeoutMs = 10000, pollIntervalMs = 100): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (!isSessionRunning(session)) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  throw new Error(`Session ${session} did not stop within ${timeoutMs}ms`);
 }
 
 // ---------------------------------------------------------------------------
@@ -362,7 +444,7 @@ async function main() {
   // Client-side: install
   if (action === "install") {
     process.stderr.write("[camoufox-cli] Downloading browser...\n");
-    execFileSync("npx", ["camoufox-js", "fetch"], { stdio: "inherit" });
+    execFileSync(getNodeCommand(), [getCamoufoxJsCliPath(), "fetch"], { stdio: "inherit" });
     process.stderr.write("[camoufox-cli] Browser installed.\n");
     if ((command.params as any)?.with_deps) {
       installSystemDeps();
@@ -389,7 +471,10 @@ async function main() {
     if (sessions.length === 0) { console.log("No active sessions."); return; }
     const closeCmd = { id: "r1", action: "close", params: {} };
     for (const session of sessions) {
-      try { await sendCommand(getSocketPath(session), closeCmd); }
+      try {
+        await sendCommand(getSocketPath(session), closeCmd);
+        await waitForSessionShutdown(session);
+      }
       catch (e: any) { process.stderr.write(`Failed to close session ${session}: ${e.message}\n`); }
     }
     return;
@@ -405,6 +490,9 @@ async function main() {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const response = await sendCommand(sockPath, command);
+      if (action === "close") {
+        await waitForSessionShutdown(flags.session);
+      }
       printResponse(response, flags.json);
       return;
     } catch (e: any) {

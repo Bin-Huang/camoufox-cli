@@ -1,19 +1,8 @@
 /** Browser manager: launches and manages Camoufox instance. */
 
-import { execFileSync } from "node:child_process";
 import { Camoufox, launchOptions } from "camoufox-js";
 import { firefox, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { RefRegistry } from "./refs.js";
-
-function ensureBrowserInstalled(): void {
-  try {
-    execFileSync("npx", ["camoufox-js", "path"], { stdio: "pipe" });
-  } catch {
-    throw new Error(
-      "Browser not found. Run `camoufox-cli install` to download it."
-    );
-  }
-}
 
 export class BrowserManager {
   refs = new RefRegistry();
@@ -33,8 +22,6 @@ export class BrowserManager {
   async launch(headless: boolean = true): Promise<void> {
     if (this.browser || this.context) return;
 
-    ensureBrowserInstalled();
-
     if (this.proxy) {
       if (!this.proxy.includes("://")) {
         throw new Error(
@@ -52,15 +39,28 @@ export class BrowserManager {
     const launchOpts: Record<string, unknown> = { headless };
     if (this.proxy) launchOpts.proxy = this.proxy;
 
-    if (this.persistent) {
-      const opts = await launchOptions(launchOpts);
-      this.context = await firefox.launchPersistentContext(this.persistent, opts);
-      const pages = this.context.pages();
-      this.page = pages[0] || await this.context.newPage();
-    } else {
-      this.browser = await Camoufox(launchOpts) as Browser;
-      this.page = await this.browser.newPage();
-      this.context = this.page.context();
+    try {
+      if (this.persistent) {
+        const opts = await launchOptions(launchOpts);
+        this.context = await firefox.launchPersistentContext(this.persistent, opts);
+        const pages = this.context.pages();
+        this.page = pages[0] || await this.context.newPage();
+      } else {
+        this.browser = await Camoufox(launchOpts) as Browser;
+        this.page = await this.browser.newPage();
+        this.context = this.page.context();
+      }
+    } catch (error) {
+      const message = String(error);
+      if (
+        message.includes("Camoufox is not installed") ||
+        message.includes("Camoufox executable not found") ||
+        message.includes("Please run `camoufox fetch` to install")
+      ) {
+        throw new Error("Browser not found. Run `camoufox-cli install` to download it.");
+      }
+
+      throw error;
     }
   }
 
