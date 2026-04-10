@@ -3,6 +3,7 @@
 import { execFileSync } from "node:child_process";
 import { Camoufox, launchOptions } from "camoufox-js";
 import { firefox, type Browser, type BrowserContext, type Page } from "playwright-core";
+import { parseProxySettings } from "./proxy.js";
 import { RefRegistry } from "./refs.js";
 
 function ensureBrowserInstalled(): void {
@@ -35,22 +36,11 @@ export class BrowserManager {
 
     ensureBrowserInstalled();
 
-    if (this.proxy) {
-      if (!this.proxy.includes("://")) {
-        throw new Error(
-          `Invalid proxy URL: ${this.proxy}. Expected format: http://host:port`
-        );
-      }
-      const scheme = this.proxy.split("://")[0].toLowerCase();
-      if (scheme !== "http" && scheme !== "https") {
-        throw new Error(
-          `Unsupported proxy scheme: ${scheme}. Only http:// and https:// proxies are supported.`
-        );
-      }
-    }
-
     const launchOpts: Record<string, unknown> = { headless };
-    if (this.proxy) launchOpts.proxy = this.proxy;
+    if (this.proxy) {
+      const settings = parseProxySettings(this.proxy);
+      launchOpts.proxy = settings.proxy;
+    }
 
     if (this.persistent) {
       const opts = await launchOptions(launchOpts);

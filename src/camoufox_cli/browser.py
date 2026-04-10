@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from urllib.parse import urlparse
-
 from camoufox.sync_api import Camoufox
 from playwright.sync_api import BrowserContext, Page
 
+from .proxy import parse_proxy_settings
 from .refs import RefRegistry
 
 
@@ -44,24 +43,7 @@ class BrowserManager:
 
         kwargs: dict = {"headless": headless}
         if self._proxy:
-            parsed = urlparse(self._proxy)
-            if parsed.scheme not in ("http", "https"):
-                raise ValueError(
-                    f"Unsupported proxy scheme: {parsed.scheme}. Only http:// and https:// proxies are supported."
-                )
-            if not parsed.hostname:
-                raise ValueError(
-                    f"Invalid proxy URL: {self._proxy}. Expected format: http://host:port"
-                )
-            host_port = parsed.hostname
-            if parsed.port:
-                host_port += f":{parsed.port}"
-            proxy: dict = {"server": f"{parsed.scheme}://{host_port}"}
-            if parsed.username:
-                proxy["username"] = parsed.username
-            if parsed.password:
-                proxy["password"] = parsed.password
-            kwargs["proxy"] = proxy
+            kwargs["proxy"] = parse_proxy_settings(self._proxy)
         if self._persistent:
             kwargs["persistent_context"] = True
             kwargs["user_data_dir"] = self._persistent
