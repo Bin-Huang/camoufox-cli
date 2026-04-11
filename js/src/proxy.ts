@@ -15,9 +15,9 @@ export function parseProxySettings(proxyUrl: string): ProxySettings {
 
   const parsed = new URL(proxyUrl);
   const scheme = parsed.protocol.slice(0, -1).toLowerCase();
-  if (scheme !== "http" && scheme !== "https") {
+  if (scheme !== "http") {
     throw new Error(
-      `Unsupported proxy scheme: ${scheme}. Only http:// and https:// proxies are supported.`
+      `Unsupported proxy scheme: ${scheme}. Only http:// proxies are supported.`
     );
   }
   if (!parsed.hostname) {
@@ -27,7 +27,7 @@ export function parseProxySettings(proxyUrl: string): ProxySettings {
   }
 
   const hostPort = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
-  const proxy: ProxySettings["proxy"] = { server: `${scheme}://${hostPort}` };
+  const proxy: ProxySettings["proxy"] = { server: `http://${hostPort}` };
   const username = parsed.username ? decodeURIComponent(parsed.username) : "";
   const password = parsed.password ? decodeURIComponent(parsed.password) : "";
 
