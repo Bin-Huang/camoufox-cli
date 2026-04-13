@@ -152,7 +152,7 @@ camoufox-cli cookies export file.json     # Export cookies
 --timeout <seconds>    Daemon idle timeout (default: 1800)
 --json                 Output as JSON
 --persistent [path]    Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
---proxy <url>          Proxy server (e.g. http://host:port or http://user:pass@host:port)
+--proxy <url>          Proxy server (http:// or https://; auth: http://user:pass@host:port)
 --no-geoip             Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 ```
 

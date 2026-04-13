@@ -487,5 +487,5 @@ Flags:
   --timeout <secs>     Daemon idle timeout (default: 1800)
   --json               Output as JSON
   --persistent [path]  Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
-  --proxy <url>        Proxy server (e.g. http://host:port)
+  --proxy <url>        Proxy server (e.g. http://host:port or https://host:443)
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)"""

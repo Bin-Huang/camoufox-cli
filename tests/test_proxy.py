@@ -24,6 +24,14 @@ class TestParseProxySettings:
             "password": "pass/word",
         }
 
-    def test_https_scheme_is_rejected(self):
-        with pytest.raises(ValueError, match="Only http://"):
-            parse_proxy_settings("https://user:pass@host:443")
+    def test_https_proxy_is_supported(self):
+        proxy = parse_proxy_settings("https://user:pass@host:443")
+        assert proxy == {
+            "server": "https://host:443",
+            "username": "user",
+            "password": "pass",
+        }
+
+    def test_socks5_scheme_is_rejected(self):
+        with pytest.raises(ValueError, match="Only http:// and https://"):
+            parse_proxy_settings("socks5://host:1080")

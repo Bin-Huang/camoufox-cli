@@ -30,9 +30,26 @@ describe("parseProxySettings", () => {
     });
   });
 
-  it("rejects https:// scheme with a clear error", () => {
-    expect(() => parseProxySettings("https://user:pass@host:443")).toThrow(
-      /Only http:\/\//
+  it("supports https:// proxies", () => {
+    // WHATWG URL strips default port 443 for https.
+    expect(parseProxySettings("https://user:pass@host:443")).toEqual({
+      proxy: {
+        server: "https://host",
+        username: "user",
+        password: "pass",
+      },
+    });
+  });
+
+  it("preserves non-default https port", () => {
+    expect(parseProxySettings("https://host:8443")).toEqual({
+      proxy: { server: "https://host:8443" },
+    });
+  });
+
+  it("rejects unsupported schemes like socks5://", () => {
+    expect(() => parseProxySettings("socks5://host:1080")).toThrow(
+      /Only http:\/\/ and https:\/\//
     );
   });
 });
