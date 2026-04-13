@@ -153,6 +153,7 @@ camoufox-cli cookies export file.json     # Export cookies
 --json                 Output as JSON
 --persistent [path]    Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
 --proxy <url>          Proxy server (e.g. http://host:port or http://user:pass@host:port)
+--no-geoip             Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 ```
 
 ## Architecture

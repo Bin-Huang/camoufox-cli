@@ -266,6 +266,12 @@ describe("parseArgs", () => {
     expect(flags.json).toBe(false);
     expect(flags.persistent).toBeNull();
     expect(flags.proxy).toBeNull();
+    expect(flags.geoip).toBe(true);
+  });
+
+  it("--no-geoip flag", () => {
+    const { flags } = parseArgs(["--no-geoip", "open", "https://example.com"]);
+    expect(flags.geoip).toBe(false);
   });
 
   it("--proxy flag", () => {
