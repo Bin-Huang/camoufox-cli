@@ -23,12 +23,14 @@ export class BrowserManager {
   private page: Page | null = null;
   private persistent: string | null;
   private proxy: string | null;
+  private geoip: boolean;
   private history: string[] = [];
   private historyIndex = -1;
 
-  constructor(persistent: string | null = null, proxy: string | null = null) {
+  constructor(persistent: string | null = null, proxy: string | null = null, geoip: boolean = true) {
     this.persistent = persistent;
     this.proxy = proxy;
+    this.geoip = geoip;
   }
 
   async launch(headless: boolean = true): Promise<void> {
@@ -42,6 +44,9 @@ export class BrowserManager {
       const settings = parseProxySettings(this.proxy);
       proxySettings = settings.proxy;
       launchOpts.proxy = settings.proxy;
+      if (this.geoip) {
+        launchOpts.geoip = true;
+      }
     }
 
     if (this.persistent) {

@@ -191,6 +191,7 @@ class TestParseArgs:
         assert flags["json"] is False
         assert flags["persistent"] is None
         assert flags["proxy"] is None
+        assert flags["geoip"] is True
 
     def test_session_flag(self):
         flags, cmd = parse_args(["--session", "mysession", "open", "https://example.com"])
@@ -223,6 +224,10 @@ class TestParseArgs:
     def test_missing_proxy_value(self):
         with pytest.raises(SystemExit):
             parse_args(["--proxy"])
+
+    def test_no_geoip_flag(self):
+        flags, cmd = parse_args(["--no-geoip", "open", "https://example.com"])
+        assert flags["geoip"] is False
 
     def test_multiple_flags(self):
         flags, cmd = parse_args(["--headed", "--json", "--session", "s1", "snapshot", "-i"])

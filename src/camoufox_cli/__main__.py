@@ -14,6 +14,7 @@ def main():
     parser.add_argument("--timeout", type=int, default=1800, help="Idle timeout in seconds")
     parser.add_argument("--persistent", default=None, help="Path for persistent browser profile")
     parser.add_argument("--proxy", default=None, help="Proxy server URL")
+    parser.add_argument("--no-geoip", dest="geoip", action="store_false", default=True, help="Disable automatic GeoIP spoofing when using a proxy")
     args = parser.parse_args()
 
     headless = not args.headed
@@ -24,6 +25,7 @@ def main():
         timeout=args.timeout,
         persistent=args.persistent,
         proxy=args.proxy,
+        geoip=args.geoip,
     )
 
     print(f"[camoufox-cli] Starting daemon session={args.session} headless={headless}", file=sys.stderr)
