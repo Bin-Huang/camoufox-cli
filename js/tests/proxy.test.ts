@@ -10,7 +10,7 @@ describe("parseProxySettings", () => {
     });
   });
 
-  it("does not add extra headers for authenticated HTTP proxies", () => {
+  it("returns credentials for authenticated HTTP proxies", () => {
     expect(parseProxySettings("http://user:pass@host:8080")).toEqual({
       proxy: {
         server: "http://host:8080",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+
 from camoufox.sync_api import Camoufox
 from playwright.sync_api import BrowserContext, Page
 
@@ -42,8 +44,10 @@ class BrowserManager:
         _ensure_browser_installed()
 
         kwargs: dict = {"headless": headless}
+        proxy_settings: dict | None = None
         if self._proxy:
-            kwargs["proxy"] = parse_proxy_settings(self._proxy)
+            proxy_settings = parse_proxy_settings(self._proxy)
+            kwargs["proxy"] = proxy_settings
         if self._persistent:
             kwargs["persistent_context"] = True
             kwargs["user_data_dir"] = self._persistent
@@ -60,6 +64,16 @@ class BrowserManager:
             # Normal mode: result is Browser, new_page() creates default context + page
             self._page = result.new_page()
             self._context = self._page.context
+
+        # Workaround: Playwright's Firefox (Juggler) fails proxy auth on HTTPS
+        # CONNECT tunnels, raising NS_ERROR_PROXY_AUTHENTICATION_FAILED.
+        # Inject Basic auth as an extra HTTP header like WebKit/Chromium do.
+        if proxy_settings and proxy_settings.get("username"):
+            creds = f"{proxy_settings['username']}:{proxy_settings.get('password', '')}"
+            token = base64.b64encode(creds.encode()).decode()
+            self._context.set_extra_http_headers(
+                {"Proxy-Authorization": f"Basic {token}"}
+            )
 
     def get_page(self) -> Page:
         if self._page is None:

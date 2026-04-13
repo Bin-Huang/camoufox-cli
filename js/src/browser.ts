@@ -37,8 +37,10 @@ export class BrowserManager {
     ensureBrowserInstalled();
 
     const launchOpts: Record<string, unknown> = { headless };
+    let proxySettings: { server: string; username?: string; password?: string } | null = null;
     if (this.proxy) {
       const settings = parseProxySettings(this.proxy);
+      proxySettings = settings.proxy;
       launchOpts.proxy = settings.proxy;
     }
 
@@ -51,6 +53,17 @@ export class BrowserManager {
       this.browser = await Camoufox(launchOpts) as Browser;
       this.page = await this.browser.newPage();
       this.context = this.page.context();
+    }
+
+    // Workaround: Playwright's Firefox (Juggler) fails proxy auth on HTTPS
+    // CONNECT tunnels, raising NS_ERROR_PROXY_AUTHENTICATION_FAILED.
+    // Inject Basic auth as an extra HTTP header like WebKit/Chromium do.
+    if (proxySettings?.username) {
+      const creds = `${proxySettings.username}:${proxySettings.password ?? ""}`;
+      const token = Buffer.from(creds, "utf8").toString("base64");
+      await this.context.setExtraHTTPHeaders({
+        "Proxy-Authorization": `Basic ${token}`,
+      });
     }
   }
 

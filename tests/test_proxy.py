@@ -8,7 +8,7 @@ class TestParseProxySettings:
         proxy = parse_proxy_settings("http://host:8080")
         assert proxy == {"server": "http://host:8080"}
 
-    def test_authenticated_http_proxy_does_not_add_extra_headers(self):
+    def test_authenticated_http_proxy_returns_credentials(self):
         proxy = parse_proxy_settings("http://user:pass@host:8080")
         assert proxy == {
             "server": "http://host:8080",
