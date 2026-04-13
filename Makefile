@@ -14,13 +14,13 @@ test-e2e:
 	cd js && npx vitest run tests/e2e.test.ts
 
 build: clean
-	python -m build
+	uv build
 	cd js && npm run build
 
 publish: publish-pip publish-npm
 
 publish-pip: build
-	twine upload dist/*
+	uvx twine upload dist/*
 
 publish-npm: build
 	cd js && npm publish --access public
