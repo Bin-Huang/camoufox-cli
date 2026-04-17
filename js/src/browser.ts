@@ -24,13 +24,15 @@ export class BrowserManager {
   private persistent: string | null;
   private proxy: string | null;
   private geoip: boolean;
+  private locale: string | null;
   private history: string[] = [];
   private historyIndex = -1;
 
-  constructor(persistent: string | null = null, proxy: string | null = null, geoip: boolean = true) {
+  constructor(persistent: string | null = null, proxy: string | null = null, geoip: boolean = true, locale: string | null = null) {
     this.persistent = persistent;
     this.proxy = proxy;
     this.geoip = geoip;
+    this.locale = locale;
   }
 
   async launch(headless: boolean = true): Promise<void> {
@@ -46,6 +48,13 @@ export class BrowserManager {
       launchOpts.proxy = settings.proxy;
       if (this.geoip) {
         launchOpts.geoip = true;
+      }
+    }
+    if (this.locale) {
+      // Accept "en-US" or a comma-separated list "en-US,en,zh-CN".
+      const locales = this.locale.split(",").map((s) => s.trim()).filter(Boolean);
+      if (locales.length > 0) {
+        launchOpts.locale = locales.length > 1 ? locales : locales[0];
       }
     }
 

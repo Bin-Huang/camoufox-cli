@@ -23,7 +23,7 @@ def _ensure_browser_installed() -> None:
 
 
 class BrowserManager:
-    def __init__(self, persistent: str | None = None, proxy: str | None = None, geoip: bool = True):
+    def __init__(self, persistent: str | None = None, proxy: str | None = None, geoip: bool = True, locale: str | None = None):
         self._camoufox: Camoufox | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
@@ -32,6 +32,7 @@ class BrowserManager:
         self._persistent = persistent
         self._proxy = proxy
         self._geoip = geoip
+        self._locale = locale
         # Camoufox spoofs history API for anti-fingerprinting,
         # so we track navigation history ourselves.
         self._history: list[str] = []
@@ -51,6 +52,11 @@ class BrowserManager:
             kwargs["proxy"] = proxy_settings
             if self._geoip:
                 kwargs["geoip"] = True
+        if self._locale:
+            # Accept "en-US" or a comma-separated list "en-US,en,zh-CN".
+            locales = [s.strip() for s in self._locale.split(",") if s.strip()]
+            if locales:
+                kwargs["locale"] = locales if len(locales) > 1 else locales[0]
         if self._persistent:
             kwargs["persistent_context"] = True
             kwargs["user_data_dir"] = self._persistent
