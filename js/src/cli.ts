@@ -30,7 +30,7 @@ function sendCommand(sockPath: string, command: Record<string, unknown>): Promis
   });
 }
 
-function spawnDaemon(session: string, headed: boolean, timeout: number, persistent: string | null, proxy: string | null = null, geoip: boolean = true): Promise<void> {
+function spawnDaemon(session: string, headed: boolean, timeout: number, persistent: string | null, proxy: string | null = null, geoip: boolean = true, locale: string | null = null): Promise<void> {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const daemonPath = path.join(__dirname, "daemon.js");
 
@@ -39,6 +39,7 @@ function spawnDaemon(session: string, headed: boolean, timeout: number, persiste
   if (persistent) args.push("--persistent", persistent);
   if (proxy) args.push("--proxy", proxy);
   if (!geoip) args.push("--no-geoip");
+  if (locale) args.push("--locale", locale);
 
   spawn("node", [daemonPath, ...args], {
     detached: true,
@@ -58,7 +59,7 @@ function spawnDaemon(session: string, headed: boolean, timeout: number, persiste
   });
 }
 
-async function ensureDaemon(session: string, headed: boolean, timeout: number, persistent: string | null, proxy: string | null = null, geoip: boolean = true): Promise<void> {
+async function ensureDaemon(session: string, headed: boolean, timeout: number, persistent: string | null, proxy: string | null = null, geoip: boolean = true, locale: string | null = null): Promise<void> {
   const sockPath = getSocketPath(session);
   if (fs.existsSync(sockPath)) {
     // Verify daemon is alive
@@ -73,7 +74,7 @@ async function ensureDaemon(session: string, headed: boolean, timeout: number, p
       try { fs.unlinkSync(sockPath); } catch {}
     }
   }
-  await spawnDaemon(session, headed, timeout, persistent, proxy, geoip);
+  await spawnDaemon(session, headed, timeout, persistent, proxy, geoip, locale);
 }
 
 export function listSessions(): string[] {
@@ -100,10 +101,11 @@ export interface Flags {
   persistent: string | null;
   proxy: string | null;
   geoip: boolean;
+  locale: string | null;
 }
 
 export function parseArgs(argv: string[]): { flags: Flags; command: Record<string, unknown> } {
-  const flags: Flags = { session: "default", headed: false, timeout: 1800, json: false, persistent: null, proxy: null, geoip: true };
+  const flags: Flags = { session: "default", headed: false, timeout: 1800, json: false, persistent: null, proxy: null, geoip: true, locale: null };
   const rest: string[] = [];
 
   let i = 0;
@@ -136,6 +138,9 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
         break;
       case "--no-geoip":
         flags.geoip = false;
+        break;
+      case "--locale":
+        flags.locale = argv[++i] ?? (process.stderr.write("Error: --locale requires a value\n"), process.exit(1), "");
         break;
       default:
         rest.push(argv[i]);
@@ -401,7 +406,7 @@ async function main() {
   }
 
   // Ensure daemon is running
-  await ensureDaemon(flags.session, flags.headed, flags.timeout, flags.persistent, flags.proxy, flags.geoip);
+  await ensureDaemon(flags.session, flags.headed, flags.timeout, flags.persistent, flags.proxy, flags.geoip, flags.locale);
 
   const sockPath = getSocketPath(flags.session);
 
@@ -474,7 +479,8 @@ Flags:
   --json               Output as JSON
   --persistent [path]  Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
   --proxy <url>        Proxy server (e.g. http://host:port or https://host:443)
-  --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)`;
+  --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
+  --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")`;
 
 const isDirectRun = (() => {
   try {

@@ -32,7 +32,7 @@ def send_command(sock_path: str, command: dict) -> dict:
     return json.loads(data.decode())
 
 
-def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | None, proxy: str | None = None, geoip: bool = True) -> None:
+def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | None, proxy: str | None = None, geoip: bool = True, locale: str | None = None) -> None:
     cmd = [sys.executable, "-m", "camoufox_cli", "--session", session, "--timeout", str(timeout)]
     if headed:
         cmd.append("--headed")
@@ -42,6 +42,8 @@ def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | Non
         cmd.extend(["--proxy", proxy])
     if not geoip:
         cmd.append("--no-geoip")
+    if locale:
+        cmd.extend(["--locale", locale])
 
     subprocess.Popen(
         cmd,
@@ -61,7 +63,7 @@ def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | Non
     sys.exit(1)
 
 
-def ensure_daemon(session: str, headed: bool, timeout: int, persistent: str | None, proxy: str | None = None, geoip: bool = True) -> None:
+def ensure_daemon(session: str, headed: bool, timeout: int, persistent: str | None, proxy: str | None = None, geoip: bool = True, locale: str | None = None) -> None:
     sock_path = get_socket_path(session)
     if os.path.exists(sock_path):
         # Verify daemon is actually alive by trying to connect
@@ -77,7 +79,7 @@ def ensure_daemon(session: str, headed: bool, timeout: int, persistent: str | No
                 os.unlink(sock_path)
             except FileNotFoundError:
                 pass
-    spawn_daemon(session, headed, timeout, persistent, proxy, geoip)
+    spawn_daemon(session, headed, timeout, persistent, proxy, geoip, locale)
 
 
 def list_sessions() -> list[str]:
@@ -94,7 +96,7 @@ def list_sessions() -> list[str]:
 
 def parse_args(args: list[str]) -> tuple[dict, dict]:
     """Parse CLI args into (flags, command). Returns (flags_dict, command_json)."""
-    flags = {"session": "default", "headed": False, "timeout": 1800, "json": False, "persistent": None, "proxy": None, "geoip": True}
+    flags = {"session": "default", "headed": False, "timeout": 1800, "json": False, "persistent": None, "proxy": None, "geoip": True, "locale": None}
     rest = []
 
     i = 0
@@ -130,6 +132,12 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
             flags["proxy"] = args[i]
         elif args[i] == "--no-geoip":
             flags["geoip"] = False
+        elif args[i] == "--locale":
+            i += 1
+            if i >= len(args):
+                print("Error: --locale requires a value", file=sys.stderr)
+                sys.exit(1)
+            flags["locale"] = args[i]
         else:
             rest.append(args[i])
         i += 1
@@ -415,7 +423,7 @@ def main():
         return
 
     # Ensure daemon is running
-    ensure_daemon(flags["session"], flags["headed"], flags["timeout"], flags["persistent"], flags["proxy"], flags["geoip"])
+    ensure_daemon(flags["session"], flags["headed"], flags["timeout"], flags["persistent"], flags["proxy"], flags["geoip"], flags["locale"])
 
     sock_path = get_socket_path(flags["session"])
 
@@ -488,4 +496,5 @@ Flags:
   --json               Output as JSON
   --persistent [path]  Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
   --proxy <url>        Proxy server (e.g. http://host:port or https://host:443)
-  --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)"""
+  --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
+  --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")"""

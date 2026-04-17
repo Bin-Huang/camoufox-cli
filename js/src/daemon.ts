@@ -16,8 +16,9 @@ const timeout = parseInt(getArg("--timeout", "1800"), 10);
 const persistent = args.includes("--persistent") ? getArg("--persistent", "") || null : null;
 const proxy = args.includes("--proxy") ? getArg("--proxy", "") || null : null;
 const geoip = !args.includes("--no-geoip");
+const locale = args.includes("--locale") ? getArg("--locale", "") || null : null;
 
-const server = new DaemonServer({ session, headless, timeout, persistent, proxy, geoip });
+const server = new DaemonServer({ session, headless, timeout, persistent, proxy, geoip, locale });
 
 process.stderr.write(`[camoufox-cli] Starting daemon session=${session} headless=${headless}\n`);
 server.start().catch((err) => {

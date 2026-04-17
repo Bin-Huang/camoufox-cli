@@ -15,13 +15,13 @@ from .protocol import parse_command, serialize_response
 
 
 class DaemonServer:
-    def __init__(self, session: str = "default", headless: bool = True, timeout: int = 1800, persistent: str | None = None, proxy: str | None = None, geoip: bool = True):
+    def __init__(self, session: str = "default", headless: bool = True, timeout: int = 1800, persistent: str | None = None, proxy: str | None = None, geoip: bool = True, locale: str | None = None):
         self.session = session
         self.headless = headless
         self.timeout = timeout  # idle timeout in seconds
         self.socket_path = f"/tmp/camoufox-cli-{session}.sock"
         self.pid_path = f"/tmp/camoufox-cli-{session}.pid"
-        self.manager = BrowserManager(persistent=persistent, proxy=proxy, geoip=geoip)
+        self.manager = BrowserManager(persistent=persistent, proxy=proxy, geoip=geoip, locale=locale)
         self._server_socket: socket.socket | None = None
         self._last_activity = time.time()
         self._running = False
