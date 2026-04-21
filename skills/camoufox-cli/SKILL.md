@@ -163,6 +163,8 @@ camoufox-cli cookies import auth.json
 camoufox-cli reload
 ```
 
+For long-lived accounts where the site also verifies device stability (not just the cookie), combine this with `--persistent` so the fingerprint stays fixed alongside the cookies — see the Persistent Identity section below.
+
 ### Multiple Tabs
 
 ```bash
@@ -313,10 +315,26 @@ camoufox-cli snapshot -i
 --headed               Show browser window (default: headless)
 --timeout <seconds>    Daemon idle timeout (default: 1800)
 --json                 Output as JSON instead of human-readable
---persistent [path]    Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
+--persistent [path]    Persistent identity — reuse the same fingerprint + cookies across launches
+                       (default path: ~/.camoufox-cli/profiles/<session>)
 --proxy <url>          Proxy server (http:// or https://; auth: http://user:pass@host:port)
 --no-geoip             Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 --locale <tag>         Force browser locale (e.g. "en-US" or "en-US,zh-CN")
+```
+
+## Persistent Identity
+
+By default, every launch gets a fresh random fingerprint. Add `--persistent [path]` to reuse the same fingerprint + cookies across launches — fingerprint/OS/canvas+font seeds are frozen on first launch (delete the directory to reset); `--locale` and proxy-derived timezone/geolocation are stored but refreshed whenever you pass the flag; `--proxy` / `--no-geoip` are never stored, so pass them every launch.
+
+**Use it when** the same device should see the same fingerprint across visits (account-bound tasks, parallel independent identities, or when `cookies import/export` alone isn't enough because the site also checks device stability). **Skip it** for one-off scraping or quick debugging.
+
+```bash
+# Parallel identities, each with its own fingerprint + cookies
+camoufox-cli --session a --persistent ~/.camoufox-cli/profiles/alice open https://app.example.com
+camoufox-cli --session b --persistent ~/.camoufox-cli/profiles/bob   open https://app.example.com
+
+# Reset an identity: just remove the directory
+rm -rf ~/.camoufox-cli/profiles/alice
 ```
 
 ## Documentation
