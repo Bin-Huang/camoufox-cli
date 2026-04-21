@@ -5,6 +5,7 @@ Anti-detect browser CLI & Skills for AI agents, powered by [Camoufox](https://gi
 ### Highlights
 
 - C++-level fingerprint spoofing via Camoufox (canvas, WebGL, audio, screen metrics, fonts)
+- Persistent identities: stable fingerprint, OS, and locale across launches with `--persistent`
 - Accessibility-tree snapshots with `@ref` element targeting
 - Session isolation with cookie import/export
 - Shell commands, no code generation
@@ -151,11 +152,48 @@ camoufox-cli cookies export file.json     # Export cookies
 --headed               Show browser window (default: headless)
 --timeout <seconds>    Daemon idle timeout (default: 1800)
 --json                 Output as JSON
---persistent [path]    Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
+--persistent [path]    Persistent identity (see below); default path: ~/.camoufox-cli/profiles/<session>
 --proxy <url>          Proxy server (http:// or https://; auth: http://user:pass@host:port)
 --no-geoip             Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 --locale <tag>         Force browser locale (e.g. "en-US" or "en-US,zh-CN")
 ```
+
+## Persistent Identity
+
+Without `--persistent`, every launch gets a fresh random fingerprint. With `--persistent`, a `camoufox-cli.json` file is written next to the browser's user data. Fingerprint, OS, and canvas/font seeds are generated on the first launch and frozen afterwards; locale and proxy-derived timezone/geolocation are also saved but track whatever you pass on the command line. Every subsequent launch with the same path reloads the identity, so sites see the same device on every visit.
+
+```bash
+# First launch: generates + stores identity
+camoufox-cli --persistent ~/.camoufox-cli/profiles/alice open https://example.com
+
+# Every subsequent launch: same fingerprint, same cookies, same device
+camoufox-cli --persistent ~/.camoufox-cli/profiles/alice open https://example.com
+```
+
+**Frozen** — generated on the first launch, permanent until the directory is deleted:
+
+- Fingerprint (UA, canvas, WebGL, fonts, navigator properties)
+- OS (defaults to host OS)
+- Canvas/font noise seeds
+
+**Persisted** — stored in the file, refreshed whenever you pass the flag:
+
+- `--locale`: sets the stored locale; pass it again to change it, omit it to keep the stored value.
+- Timezone / geolocation: re-derived from the current proxy's IP whenever `--proxy` is active (and `--no-geoip` isn't set), then written back. Without a proxy, the last stored values stay in effect.
+
+**Per-launch** — never stored; pass on every launch for it to apply:
+
+- `--proxy`: proxies rotate or expire; re-specify each launch to avoid silently running through a stale one.
+- `--no-geoip`: follows the current `--proxy`.
+
+**Multiple identities in parallel.** Each persistent path is a distinct identity. Combine with `--session` for concurrent daemons:
+
+```bash
+camoufox-cli --session a --persistent ~/.camoufox-cli/profiles/alice open https://...
+camoufox-cli --session b --persistent ~/.camoufox-cli/profiles/bob   open https://...
+```
+
+**Resetting an identity.** Just delete the directory (`rm -rf ~/.camoufox-cli/profiles/alice`). The next launch generates a fresh one.
 
 ## Architecture
 

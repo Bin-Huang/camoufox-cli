@@ -120,8 +120,13 @@ camoufox-cli --session <name> ...    # Isolated browser session
 camoufox-cli --headed ...            # Show browser window (not headless)
 camoufox-cli --json ...              # JSON output for parsing
 camoufox-cli --timeout <seconds> ... # Daemon idle timeout (default: 1800)
-camoufox-cli --persistent [path] ... # Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
+camoufox-cli --persistent [path] ... # Persistent identity — reuse the same fingerprint + cookies
+                                     # across launches (default: ~/.camoufox-cli/profiles/<session>)
 camoufox-cli --proxy <url> ...      # Proxy server (e.g. http://host:port or http://user:pass@host:port)
 camoufox-cli --no-geoip ...         # Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 camoufox-cli --locale <tag> ...     # Force browser locale (e.g. "en-US" or "en-US,zh-CN")
 ```
+
+### `--persistent` in detail
+
+Stores fingerprint, OS, canvas/font seeds, locale, and proxy-derived timezone/geolocation in `<path>/camoufox-cli.json` and reloads it on every launch with the same path. Fingerprint/OS/seeds are frozen — delete the directory to reset. `--locale` overwrites the stored locale when passed; `--proxy` + GeoIP re-derives timezone/geolocation each launch and writes back. `--proxy` and `--no-geoip` themselves are never stored. See the README for the full mental model.

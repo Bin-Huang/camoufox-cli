@@ -1,8 +1,10 @@
 /** Browser manager: launches and manages Camoufox instance. */
 
 import { execFileSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { Camoufox, launchOptions } from "camoufox-js";
 import { firefox, type Browser, type BrowserContext, type Page } from "playwright-core";
+import { loadOrCreate, toLaunchOptions } from "./identity.js";
 import { parseProxySettings } from "./proxy.js";
 import { RefRegistry } from "./refs.js";
 
@@ -50,20 +52,31 @@ export class BrowserManager {
         launchOpts.geoip = true;
       }
     }
-    if (this.locale) {
-      // Accept "en-US" or a comma-separated list "en-US,en,zh-CN".
-      const locales = this.locale.split(",").map((s) => s.trim()).filter(Boolean);
-      if (locales.length > 0) {
-        launchOpts.locale = locales.length > 1 ? locales : locales[0];
-      }
-    }
 
     if (this.persistent) {
+      // Persistent identity: freeze fingerprint/OS on first launch; reload
+      // it on subsequent launches. CLI-passed locale / proxy-derived geo
+      // overwrite the stored values so the file tracks current intent.
+      mkdirSync(this.persistent, { recursive: true });
+      const identity = await loadOrCreate(
+        this.persistent,
+        this.locale,
+        this.proxy,
+        this.geoip,
+      );
+      Object.assign(launchOpts, toLaunchOptions(identity));
       const opts = await launchOptions(launchOpts);
       this.context = await firefox.launchPersistentContext(this.persistent, opts);
       const pages = this.context.pages();
       this.page = pages[0] || await this.context.newPage();
     } else {
+      if (this.locale) {
+        // Non-persistent path: locale is a one-shot override, no identity file.
+        const locales = this.locale.split(",").map((s) => s.trim()).filter(Boolean);
+        if (locales.length > 0) {
+          launchOpts.locale = locales.length > 1 ? locales : locales[0];
+        }
+      }
       this.browser = await Camoufox(launchOpts) as Browser;
       this.page = await this.browser.newPage();
       this.context = this.page.context();
