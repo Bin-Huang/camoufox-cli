@@ -13,6 +13,9 @@ from .proxy import parse_proxy_settings
 from .refs import RefRegistry
 
 
+_MAX_HISTORY = 200
+
+
 def _ensure_browser_installed() -> None:
     """Check that the Camoufox browser binary is installed, raise if not."""
     try:
@@ -147,6 +150,9 @@ class BrowserManager:
         # Truncate forward history when navigating to a new page
         self._history = self._history[:self._history_index + 1]
         self._history.append(url)
+        # Cap history to avoid unbounded growth in long-lived daemons.
+        if len(self._history) > _MAX_HISTORY:
+            self._history = self._history[-_MAX_HISTORY:]
         self._history_index = len(self._history) - 1
 
     def go_back(self) -> str | None:
