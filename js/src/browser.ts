@@ -8,6 +8,8 @@ import { loadOrCreate, toLaunchOptions } from "./identity.js";
 import { parseProxySettings } from "./proxy.js";
 import { RefRegistry } from "./refs.js";
 
+const MAX_HISTORY = 200;
+
 function ensureBrowserInstalled(): void {
   try {
     execFileSync("npx", ["camoufox-js", "path"], { stdio: "pipe" });
@@ -147,6 +149,9 @@ export class BrowserManager {
   pushHistory(url: string): void {
     this.history = this.history.slice(0, this.historyIndex + 1);
     this.history.push(url);
+    if (this.history.length > MAX_HISTORY) {
+      this.history = this.history.slice(-MAX_HISTORY);
+    }
     this.historyIndex = this.history.length - 1;
   }
 
