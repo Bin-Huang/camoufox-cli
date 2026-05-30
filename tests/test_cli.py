@@ -87,6 +87,28 @@ class TestBuildCommand:
         cmd = build_command("press", ["press", "Enter"])
         assert cmd["params"]["key"] == "Enter"
 
+    # --- Upload ---
+    def test_upload_single(self):
+        cmd = build_command("upload", ["upload", "@e3", "/tmp/doc.pdf"])
+        assert cmd["action"] == "upload"
+        assert cmd["params"]["selector"] == "@e3"
+        assert cmd["params"]["path"].endswith("/tmp/doc.pdf")
+
+    def test_upload_multiple(self):
+        cmd = build_command("upload", ["upload", "#file", "a.txt", "b.txt"])
+        assert cmd["action"] == "upload"
+        assert cmd["params"]["selector"] == "#file"
+        assert isinstance(cmd["params"]["path"], list)
+        assert len(cmd["params"]["path"]) == 2
+
+    def test_upload_missing_selector(self):
+        with pytest.raises(SystemExit):
+            build_command("upload", ["upload"])
+
+    def test_upload_missing_files(self):
+        with pytest.raises(SystemExit):
+            build_command("upload", ["upload", "@e3"])
+
     # --- Data extraction ---
     def test_text(self):
         cmd = build_command("text", ["text", "@e1"])

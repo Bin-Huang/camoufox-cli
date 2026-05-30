@@ -159,6 +159,19 @@ def _cmd_fill(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
+def _cmd_upload(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+    selector = params.get("selector", "")
+    path = params.get("path", "")
+    if not selector:
+        return error_response(cmd_id, "Missing 'selector' parameter")
+    if not path:
+        return error_response(cmd_id, "Missing 'path' parameter")
+    page = manager.get_page()
+    locator = _resolve_ref(manager, selector) if selector.startswith("@") else page.locator(selector)
+    locator.set_input_files(path)
+    return ok_response(cmd_id)
+
+
 def _cmd_type(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     ref_str = params.get("ref", "")
     text = params.get("text", "")
@@ -368,6 +381,7 @@ _HANDLERS = {
     # Interaction
     "click": _cmd_click,
     "fill": _cmd_fill,
+    "upload": _cmd_upload,
     "type": _cmd_type,
     "select": _cmd_select,
     "check": _cmd_check,
