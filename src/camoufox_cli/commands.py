@@ -160,15 +160,27 @@ def _cmd_fill(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 
 
 def _cmd_upload(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+    # Supports both:
+    #   trigger_selector: clicks a button to open file chooser (expect_file_chooser approach)
+    #   selector: sets files directly on a file input element
+    trigger_selector = params.get("trigger_selector", "")
     selector = params.get("selector", "")
     path = params.get("path", "")
-    if not selector:
-        return error_response(cmd_id, "Missing 'selector' parameter")
     if not path:
         return error_response(cmd_id, "Missing 'path' parameter")
+    if not trigger_selector and not selector:
+        return error_response(cmd_id, "Missing 'trigger_selector' or 'selector' parameter")
     page = manager.get_page()
-    locator = _resolve_ref(manager, selector) if selector.startswith("@") else page.locator(selector)
-    locator.set_input_files(path)
+    if trigger_selector:
+        # Use expect_file_chooser to handle React/trusted event file pickers
+        trigger_locator = _resolve_ref(manager, trigger_selector) if trigger_selector.startswith("@") else page.locator(trigger_selector)
+        with page.expect_file_chooser() as fc_info:
+            trigger_locator.click()
+        file_chooser = fc_info.value
+        file_chooser.set_files(path)
+    else:
+        locator = _resolve_ref(manager, selector) if selector.startswith("@") else page.locator(selector)
+        locator.set_input_files(path)
     return ok_response(cmd_id)
 
 
