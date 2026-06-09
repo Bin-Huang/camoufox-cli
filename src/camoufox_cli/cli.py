@@ -210,14 +210,29 @@ def build_command(action: str, rest: list[str]) -> dict:
             key = _require(rest, 1, "Usage: camoufox-cli press Enter")
             return {"id": "r1", "action": "press", "params": {"key": key}}
         case "upload":
-            selector = _require(rest, 1, "Usage: camoufox-cli upload @e1 file1 [file2 ...]")
-            files = rest[2:]
+            # --trigger flag: use expect_file_chooser() instead of set_input_files()
+            # Required for React apps (e.g. Instagram) that check isTrusted on events.
+            trigger = "--trigger" in rest
+            force = "--force" in rest
+            filtered = [r for r in rest[1:] if r not in ("--trigger", "--force")]
+            if not filtered:
+                print("Usage: camoufox-cli upload [--trigger] [--force] @e1|selector file1 [file2 ...]", file=sys.stderr)
+                sys.exit(1)
+            selector = filtered[0]
+            files = filtered[1:]
             if not files:
-                print("Usage: camoufox-cli upload @e1 file1 [file2 ...]", file=sys.stderr)
+                print("Usage: camoufox-cli upload [--trigger] [--force] @e1|selector file1 [file2 ...]", file=sys.stderr)
                 sys.exit(1)
             paths = [os.path.abspath(f) for f in files]
             path = paths if len(paths) > 1 else paths[0]
-            return {"id": "r1", "action": "upload", "params": {"selector": selector, "path": path}}
+            params = {"path": path}
+            if trigger:
+                params["trigger_selector"] = selector
+                if force:
+                    params["force"] = True
+            else:
+                params["selector"] = selector
+            return {"id": "r1", "action": "upload", "params": params}
 
         # Data extraction
         case "text":
@@ -476,6 +491,7 @@ Interaction:
   hover @ref              Hover over element
   press <key>             Press key (e.g. Enter, Control+a)
   upload @ref <files...>  Upload files to file input
+  upload --trigger sel f  Upload via file chooser (for React apps)
 
 Data:
   text @ref|selector      Get text content

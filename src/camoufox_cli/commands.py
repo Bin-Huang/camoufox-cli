@@ -174,8 +174,12 @@ def _cmd_upload(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     if trigger_selector:
         # Use expect_file_chooser to handle React/trusted event file pickers
         trigger_locator = _resolve_ref(manager, trigger_selector) if trigger_selector.startswith("@") else page.locator(trigger_selector)
+        force = params.get("force", False)
         with page.expect_file_chooser() as fc_info:
-            trigger_locator.click()
+            if force:
+                trigger_locator.dispatch_event("click")
+            else:
+                trigger_locator.click()
         file_chooser = fc_info.value
         file_chooser.set_files(path)
     else:
@@ -375,6 +379,16 @@ def _cmd_cookies(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
         return error_response(cmd_id, f"Unknown cookies op: {op}")
 
 
+def _cmd_add_init_script(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+    """Add an init script that runs before every page load."""
+    script = params.get("script", "")
+    if not script:
+        return error_response(cmd_id, "Missing 'script' parameter")
+    ctx = manager.get_context()
+    ctx.add_init_script(script)
+    return ok_response(cmd_id)
+
+
 # ---------------------------------------------------------------------------
 # Handler dispatch table
 # ---------------------------------------------------------------------------
@@ -413,4 +427,6 @@ _HANDLERS = {
     "close-tab": _cmd_close_tab,
     # Cookies
     "cookies": _cmd_cookies,
+    # Init script
+    "add_init_script": _cmd_add_init_script,
 }
