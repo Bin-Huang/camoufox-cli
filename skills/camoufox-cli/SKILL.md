@@ -322,6 +322,15 @@ camoufox-cli snapshot -i
 --locale <tag>         Force browser locale (e.g. "en-US" or "en-US,zh-CN")
 ```
 
+**Config file (optional).** To avoid repeating flags, set defaults in `~/.camoufox-cli/config.json` (override path with `$CAMOUFOX_CLI_CONFIG`): a `default` block applies to all sessions, and an optional `sessions.<name>` block layers extra overrides on top whenever you run `--session <name>` (the name is just whatever you pass to `--session` — sessions are never pre-registered). Settable keys: `proxy`, `locale`, `geoip`, `persistent` (`true`/`false`/path), `headed`, `timeout`, `json`. Command-line flags always win over the file. Config is read only when a session's daemon first launches.
+
+```json
+{
+  "default": { "persistent": true, "timeout": 3600 },
+  "sessions": { "<your-session-name>": { "proxy": "socks5://127.0.0.1:1080", "locale": "zh-CN" } }
+}
+```
+
 ## Persistent Identity
 
 By default, every launch gets a fresh random fingerprint. Add `--persistent [path]` to reuse the same fingerprint + cookies across launches — fingerprint/OS/canvas+font seeds are frozen on first launch (delete the directory to reset); `--locale` and proxy-derived timezone/geolocation are stored but refreshed whenever you pass the flag; `--proxy` / `--no-geoip` are never stored, so pass them every launch.

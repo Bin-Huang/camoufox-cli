@@ -158,6 +158,33 @@ camoufox-cli cookies export file.json     # Export cookies
 --locale <tag>         Force browser locale (e.g. "en-US" or "en-US,zh-CN")
 ```
 
+## Config File
+
+Tired of repeating the same flags on every call? Put defaults in `~/.camoufox-cli/config.json` (override the path with `$CAMOUFOX_CLI_CONFIG`):
+
+```json
+{
+  "default": {
+    "persistent": true,
+    "timeout": 3600,
+    "proxy": "http://user:pass@host:8080"
+  },
+  "sessions": {
+    "<your-session-name>": {
+      "proxy": "socks5://127.0.0.1:1080",
+      "locale": "zh-CN"
+    }
+  }
+}
+```
+
+- **`default`** applies to every session.
+- **`sessions` is optional.** You never pre-register sessions — the name is just whatever you pass to `--session`. A `sessions.<name>` block only kicks in when you happen to run `--session <name>`, layering its keys on top of `default`; any other session (or no `--session` at all) just uses `default`. Above, `camoufox-cli --session <your-session-name> open <url>` swaps in that block's proxy + locale, while every other session keeps the `default` proxy.
+- **Command-line flags always win** over the file, which in turn wins over built-in defaults.
+- Settable keys: `proxy`, `locale`, `geoip`, `persistent` (`true` / `false` / path string), `headed`, `timeout`, `json`. `session` is command-line only (it selects which block to apply), and per-command options like `--full` or `-i` are never read from config.
+- A broken config never blocks a command — it's ignored with a warning on stderr.
+- Config is read when a session's daemon **first launches**. If one is already running for that session, run `camoufox-cli --session <name> close` first for changes to take effect.
+
 ## Persistent Identity
 
 Without `--persistent`, every launch gets a fresh random fingerprint. With `--persistent`, a `camoufox-cli.json` file is written next to the browser's user data. Fingerprint, OS, and canvas/font seeds are generated on the first launch and frozen afterwards; locale and proxy-derived timezone/geolocation are also saved but track whatever you pass on the command line. Every subsequent launch with the same path reloads the identity, so sites see the same device on every visit.

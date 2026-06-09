@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 
+from .config import load_defaults
+
 
 SOCKET_PREFIX = "/tmp/camoufox-cli-"
 
@@ -95,8 +97,15 @@ def list_sessions() -> list[str]:
 
 
 def parse_args(args: list[str]) -> tuple[dict, dict]:
-    """Parse CLI args into (flags, command). Returns (flags_dict, command_json)."""
-    flags = {"session": "default", "headed": False, "timeout": 1800, "json": False, "persistent": None, "proxy": None, "geoip": True, "locale": None}
+    """Parse CLI args into (flags, command). Returns (flags_dict, command_json).
+
+    Flag precedence: command line > config file (per-session block, then the
+    ``default`` block) > built-in defaults. Only flags explicitly passed on the
+    command line are collected here, so they always win over config; see
+    ``config.load_defaults``.
+    """
+    builtin = {"session": "default", "headed": False, "timeout": 1800, "json": False, "persistent": None, "proxy": None, "geoip": True, "locale": None}
+    cli: dict = {}
     rest = []
 
     i = 0
@@ -106,38 +115,38 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
             if i >= len(args):
                 print("Error: --session requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["session"] = args[i]
+            cli["session"] = args[i]
         elif args[i] == "--headed":
-            flags["headed"] = True
+            cli["headed"] = True
         elif args[i] == "--timeout":
             i += 1
             if i >= len(args):
                 print("Error: --timeout requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["timeout"] = int(args[i])
+            cli["timeout"] = int(args[i])
         elif args[i] == "--json":
-            flags["json"] = True
+            cli["json"] = True
         elif args[i] == "--persistent":
             # Optional value: if next arg looks like a path, use it; otherwise use default
             if i + 1 < len(args) and ("/" in args[i + 1] or args[i + 1].startswith((".", "~"))):
                 i += 1
-                flags["persistent"] = args[i]
+                cli["persistent"] = args[i]
             else:
-                flags["persistent"] = ""
+                cli["persistent"] = ""
         elif args[i] == "--proxy":
             i += 1
             if i >= len(args):
                 print("Error: --proxy requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["proxy"] = args[i]
+            cli["proxy"] = args[i]
         elif args[i] == "--no-geoip":
-            flags["geoip"] = False
+            cli["geoip"] = False
         elif args[i] == "--locale":
             i += 1
             if i >= len(args):
                 print("Error: --locale requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["locale"] = args[i]
+            cli["locale"] = args[i]
         else:
             rest.append(args[i])
         i += 1
@@ -145,6 +154,10 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
     if not rest:
         print(USAGE, file=sys.stderr)
         sys.exit(1)
+
+    # session selects which config block applies, so it comes only from the CLI.
+    session = cli.get("session", builtin["session"])
+    flags = {**builtin, **load_defaults(session), **cli}
 
     action = rest[0]
     cmd = build_command(action, rest)
@@ -497,4 +510,9 @@ Flags:
   --persistent [path]  Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
   --proxy <url>        Proxy server (e.g. http://host:port or https://host:443)
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
-  --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")"""
+  --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")
+
+Config file:
+  ~/.camoufox-cli/config.json sets defaults for the flags above (override the
+  path with $CAMOUFOX_CLI_CONFIG). Command-line flags always take precedence.
+  Use a "default" block plus optional per-session blocks under "sessions"."""
