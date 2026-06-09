@@ -130,3 +130,14 @@ camoufox-cli --locale <tag> ...     # Force browser locale (e.g. "en-US" or "en-
 ### `--persistent` in detail
 
 Stores fingerprint, OS, canvas/font seeds, locale, and proxy-derived timezone/geolocation in `<path>/camoufox-cli.json` and reloads it on every launch with the same path. Fingerprint/OS/seeds are frozen — delete the directory to reset. `--locale` overwrites the stored locale when passed; `--proxy` + GeoIP re-derives timezone/geolocation each launch and writes back. `--proxy` and `--no-geoip` themselves are never stored. See the README for the full mental model.
+
+### Config file
+
+Set defaults for the flags above in `~/.camoufox-cli/config.json` (override path with `$CAMOUFOX_CLI_CONFIG`) instead of repeating them. A `default` block applies to every session; an optional `sessions.<name>` block layers extra overrides on top whenever you run `--session <name>` (the name is whatever you pass to `--session` — sessions are never pre-registered). Settable keys: `proxy`, `locale`, `geoip`, `persistent` (`true`/`false`/path), `headed`, `timeout`, `json` (`session` is CLI-only). Precedence: command-line flag > config `sessions.<name>` > config `default` > built-in default. Read only when a session's daemon first launches; a malformed file is ignored with a stderr warning.
+
+```json
+{
+  "default": { "persistent": true, "timeout": 3600 },
+  "sessions": { "<your-session-name>": { "proxy": "socks5://127.0.0.1:1080", "locale": "zh-CN" } }
+}
+```

@@ -7,6 +7,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { loadDefaults } from "./config.js";
 
 const SOCKET_PREFIX = "/tmp/camoufox-cli-";
 
@@ -105,42 +106,46 @@ export interface Flags {
 }
 
 export function parseArgs(argv: string[]): { flags: Flags; command: Record<string, unknown> } {
-  const flags: Flags = { session: "default", headed: false, timeout: 1800, json: false, persistent: null, proxy: null, geoip: true, locale: null };
+  // Flag precedence: command line > config file (per-session block, then the
+  // `default` block) > built-in defaults. Only flags explicitly passed on the
+  // command line are collected here, so they always win over config.
+  const builtin: Flags = { session: "default", headed: false, timeout: 1800, json: false, persistent: null, proxy: null, geoip: true, locale: null };
+  const cli: Partial<Flags> = {};
   const rest: string[] = [];
 
   let i = 0;
   while (i < argv.length) {
     switch (argv[i]) {
       case "--session":
-        flags.session = argv[++i] ?? (process.stderr.write("Error: --session requires a value\n"), process.exit(1), "");
+        cli.session = argv[++i] ?? (process.stderr.write("Error: --session requires a value\n"), process.exit(1), "");
         break;
       case "--headed":
-        flags.headed = true;
+        cli.headed = true;
         break;
       case "--timeout":
-        flags.timeout = parseInt(argv[++i] ?? "1800", 10);
+        cli.timeout = parseInt(argv[++i] ?? "1800", 10);
         break;
       case "--json":
-        flags.json = true;
+        cli.json = true;
         break;
       case "--persistent": {
         // Optional value: if next arg looks like a path, use it; otherwise use default
         const next = argv[i + 1];
         if (next && (next.includes("/") || next.startsWith(".") || next.startsWith("~"))) {
-          flags.persistent = argv[++i];
+          cli.persistent = argv[++i];
         } else {
-          flags.persistent = "";
+          cli.persistent = "";
         }
         break;
       }
       case "--proxy":
-        flags.proxy = argv[++i] ?? null;
+        cli.proxy = argv[++i] ?? null;
         break;
       case "--no-geoip":
-        flags.geoip = false;
+        cli.geoip = false;
         break;
       case "--locale":
-        flags.locale = argv[++i] ?? (process.stderr.write("Error: --locale requires a value\n"), process.exit(1), "");
+        cli.locale = argv[++i] ?? (process.stderr.write("Error: --locale requires a value\n"), process.exit(1), "");
         break;
       default:
         rest.push(argv[i]);
@@ -152,6 +157,10 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
     process.stderr.write(USAGE + "\n");
     process.exit(1);
   }
+
+  // session selects which config block applies, so it comes only from the CLI.
+  const session = cli.session ?? builtin.session;
+  const flags: Flags = { ...builtin, ...loadDefaults(session), ...cli };
 
   const command = buildCommand(rest[0], rest);
   return { flags, command };
@@ -480,7 +489,12 @@ Flags:
   --persistent [path]  Persistent identity — freeze fingerprint/OS/locale + store cookies/state (default: ~/.camoufox-cli/profiles/<session>)
   --proxy <url>        Proxy server (e.g. http://host:port or https://host:443)
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
-  --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")`;
+  --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")
+
+Config file:
+  ~/.camoufox-cli/config.json sets defaults for the flags above (override the
+  path with $CAMOUFOX_CLI_CONFIG). Command-line flags always take precedence.
+  Use a "default" block plus optional per-session blocks under "sessions".`;
 
 const isDirectRun = (() => {
   try {
