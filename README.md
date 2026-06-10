@@ -40,6 +40,10 @@ On Linux, install system dependencies with:
 camoufox-cli install --with-deps
 ```
 
+The browser is downloaded from GitHub releases. If the anonymous GitHub API
+rate limit is exhausted (common on shared server/CI IPs), the installer
+automatically falls back to scraping github.com release pages.
+
 ### Agent Skill
 
 ```bash

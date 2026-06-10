@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { Camoufox, launchOptions } from "camoufox-js";
 import { firefox, type Browser, type BrowserContext, type Page } from "playwright-core";
+import { ensureMmdb } from "./install.js";
 import { loadOrCreate, toLaunchOptions } from "./identity.js";
 import { parseProxySettings } from "./proxy.js";
 import { RefRegistry } from "./refs.js";
@@ -43,6 +44,12 @@ export class BrowserManager {
     if (this.browser || this.context) return;
 
     ensureBrowserInstalled();
+
+    if (this.proxy && this.geoip) {
+      // Geoip resolution lazily downloads the GeoIP db via the rate-limited
+      // GitHub API; fetch it through the resilient path first.
+      await ensureMmdb();
+    }
 
     const launchOpts: Record<string, unknown> = { headless };
     let proxySettings: { server: string; username?: string; password?: string } | null = null;
