@@ -50,6 +50,13 @@ class BrowserManager:
 
         _ensure_browser_installed()
 
+        if self._proxy and self._geoip:
+            # Geoip resolution lazily downloads the GeoIP db via the
+            # rate-limited GitHub API; fetch it through the resilient path first.
+            from .install import ensure_mmdb
+
+            ensure_mmdb()
+
         kwargs: dict = {"headless": headless}
         proxy_settings: dict | None = None
         if self._proxy:

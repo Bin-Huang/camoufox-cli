@@ -381,7 +381,8 @@ async function main() {
   // Client-side: install
   if (action === "install") {
     process.stderr.write("[camoufox-cli] Downloading browser...\n");
-    execFileSync("npx", ["camoufox-js", "fetch"], { stdio: "inherit" });
+    const { installBrowser } = await import("./install.js");
+    await installBrowser();
     process.stderr.write("[camoufox-cli] Browser installed.\n");
     if ((command.params as any)?.with_deps) {
       installSystemDeps();

@@ -400,9 +400,8 @@ def main():
     # Client-side: install
     if action == "install":
         print("[camoufox-cli] Downloading browser...", file=sys.stderr)
-        from camoufox.pkgman import CamoufoxFetcher
-        fetcher = CamoufoxFetcher()
-        fetcher.install()
+        from .install import install_browser
+        install_browser()
         print("[camoufox-cli] Browser installed.", file=sys.stderr)
         if command.get("params", {}).get("with_deps"):
             _install_system_deps()
