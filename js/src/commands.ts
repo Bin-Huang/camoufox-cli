@@ -305,6 +305,30 @@ const cmdCookies: Handler = async (manager, cmdId, params) => {
   }
 };
 
+const cmdDownloads: Handler = async (manager, cmdId, params) => {
+  const op = (params.op as string) || "list";
+
+  if (op === "clear") {
+    manager.clearDownloads();
+    return okResponse(cmdId, { cleared: true, dir: manager.getDownloadDir() });
+  }
+  if (op === "cancel") {
+    const id = Number(params.id);
+    if (!Number.isInteger(id)) return errorResponse(cmdId, "Missing or invalid 'id' for cancel");
+    const cancelled = await manager.cancelDownload(id);
+    return okResponse(cmdId, { id, cancelled });
+  }
+  // op === "list" — optionally wait for in-flight downloads to settle first.
+  if (params.wait) {
+    const timeout = Number(params.timeout);
+    await manager.waitForPendingDownloads(Number.isFinite(timeout) ? timeout : undefined);
+  }
+  return okResponse(cmdId, {
+    downloads: manager.getDownloads() as any,
+    dir: manager.getDownloadDir(),
+  });
+};
+
 // ---------------------------------------------------------------------------
 // Handler dispatch table
 // ---------------------------------------------------------------------------
@@ -335,6 +359,7 @@ const HANDLERS: Record<string, Handler> = {
   switch: cmdSwitch,
   "close-tab": cmdCloseTab,
   cookies: cmdCookies,
+  downloads: cmdDownloads,
 };
 
 export async function execute(manager: BrowserManager, command: Record<string, unknown>): Promise<Response> {

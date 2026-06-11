@@ -1,15 +1,34 @@
 /** Browser manager: launches and manages Camoufox instance. */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, existsSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, parse as parsePath } from "node:path";
 import { Camoufox, launchOptions } from "camoufox-js";
-import { firefox, type Browser, type BrowserContext, type Page } from "playwright-core";
+import { firefox, type Browser, type BrowserContext, type Download, type Page } from "playwright-core";
 import { ensureMmdb } from "./install.js";
 import { loadOrCreate, toLaunchOptions } from "./identity.js";
 import { parseProxySettings } from "./proxy.js";
 import { RefRegistry } from "./refs.js";
 
 const MAX_HISTORY = 200;
+
+/** A download captured from the page and saved to disk. */
+export interface DownloadRecord {
+  id: number;
+  url: string;
+  filename: string;
+  path: string;
+  status: "pending" | "finished" | "failed" | "cancelled";
+  bytes?: number;
+  /** Wall time from the download starting to the bytes finishing landing. */
+  ms?: number;
+  /** AVERAGE throughput over the whole transfer (not a live rate). */
+  rateBytesPerSec?: number;
+  sha256?: string;
+  error?: string;
+}
 
 function ensureBrowserInstalled(): void {
   try {
@@ -32,12 +51,18 @@ export class BrowserManager {
   private locale: string | null;
   private history: string[] = [];
   private historyIndex = -1;
+  private downloadDir: string;
+  private downloads: DownloadRecord[] = [];
+  private activeDownloads = new Map<number, Download>();
+  private downloadSeq = 0;
 
   constructor(persistent: string | null = null, proxy: string | null = null, geoip: boolean = true, locale: string | null = null) {
     this.persistent = persistent;
     this.proxy = proxy;
     this.geoip = geoip;
     this.locale = locale;
+    // Where clicked downloads are saved. Override with $CAMOUFOX_DOWNLOAD_DIR.
+    this.downloadDir = process.env.CAMOUFOX_DOWNLOAD_DIR || join(homedir(), ".camoufox", "downloads");
   }
 
   async launch(headless: boolean = true): Promise<void> {
@@ -100,6 +125,116 @@ export class BrowserManager {
       await this.context.setExtraHTTPHeaders({
         "Proxy-Authorization": `Basic ${token}`,
       });
+    }
+
+    this.wireDownloads();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Downloads
+  // ---------------------------------------------------------------------------
+
+  /** Attach a download saver to the current and all future pages. */
+  private wireDownloads(): void {
+    const ctx = this.context;
+    if (!ctx) return;
+    for (const p of ctx.pages()) this.attachDownloadHandler(p);
+    ctx.on("page", (p) => this.attachDownloadHandler(p));
+  }
+
+  private attachDownloadHandler(page: Page): void {
+    page.on("download", (download) => {
+      void this.saveDownload(download);
+    });
+  }
+
+  /** Save one download to {@link downloadDir}, recording size, rate and hash. */
+  private async saveDownload(download: Download): Promise<void> {
+    const id = this.downloadSeq++;
+    const record: DownloadRecord = {
+      id,
+      url: download.url(),
+      filename: download.suggestedFilename() || "download",
+      path: "",
+      status: "pending",
+    };
+    this.downloads.push(record);
+    this.activeDownloads.set(id, download);
+    const started = Date.now();
+    try {
+      // failure() resolves once the transfer settles (null on success).
+      const failure = await download.failure();
+      if (record.status === "cancelled") return;
+      if (failure) throw new Error(failure);
+      const elapsed = Date.now() - started;
+      const dest = this.uniqueDownloadPath(record.filename);
+      await download.saveAs(dest);
+      const bytes = statSync(dest).size;
+      record.path = dest;
+      record.bytes = bytes;
+      record.ms = elapsed;
+      // Average over the whole transfer — deliberately not a live rate.
+      record.rateBytesPerSec = elapsed > 0 ? Math.round(bytes / (elapsed / 1000)) : 0;
+      record.sha256 = createHash("sha256").update(readFileSync(dest)).digest("hex");
+      record.status = "finished";
+    } catch (e) {
+      if (record.status !== "cancelled") {
+        record.status = "failed";
+        record.error = String((e as Error)?.message ?? e);
+      }
+    } finally {
+      this.activeDownloads.delete(id);
+    }
+  }
+
+  /** Build a non-clobbering path inside the download dir ("file (1).ext"). */
+  private uniqueDownloadPath(filename: string): string {
+    mkdirSync(this.downloadDir, { recursive: true });
+    const { name, ext } = parsePath(filename);
+    let candidate = join(this.downloadDir, filename);
+    let i = 1;
+    while (existsSync(candidate)) {
+      candidate = join(this.downloadDir, `${name} (${i})${ext}`);
+      i++;
+    }
+    return candidate;
+  }
+
+  getDownloads(): DownloadRecord[] {
+    return this.downloads;
+  }
+
+  getDownloadDir(): string {
+    return this.downloadDir;
+  }
+
+  clearDownloads(): void {
+    this.downloads = [];
+  }
+
+  /** Cancel an in-flight download by id. Returns false if it already settled. */
+  async cancelDownload(id: number): Promise<boolean> {
+    const download = this.activeDownloads.get(id);
+    if (!download) return false;
+    const record = this.downloads.find((d) => d.id === id);
+    if (record) {
+      record.status = "cancelled";
+      record.error = "cancelled by user";
+    }
+    try {
+      await download.cancel();
+    } catch {
+      /* already finished racing us; status stays cancelled */
+    }
+    this.activeDownloads.delete(id);
+    return true;
+  }
+
+  /** Block until no download is still pending (or the timeout elapses). */
+  async waitForPendingDownloads(timeoutMs = 30000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline && this.downloads.some((d) => d.status === "pending")) {
+      await new Promise((r) => setTimeout(r, 100));
     }
   }
 
