@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
     "camoufox[geoip]",
-    "playwright",
+    "playwright==1.52.0",
     "Pillow",
 ]
 
