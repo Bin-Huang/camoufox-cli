@@ -29,7 +29,7 @@
   "dependencies": {
     "camoufox-js": "^0.11.1",
     "pdf-lib": "^1.17.1",
-    "playwright-core": "^1.52.0"
+    "playwright-core": "1.52.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
