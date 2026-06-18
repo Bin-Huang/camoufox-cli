@@ -149,6 +149,25 @@ camoufox-cli cookies import file.json     # Import cookies
 camoufox-cli cookies export file.json     # Export cookies
 ```
 
+### Downloads
+
+Downloads triggered by a click (or any page navigation that returns an
+attachment) are saved automatically to `$CAMOUFOX_DOWNLOAD_DIR` (default
+`~/.camoufox/downloads`), with the saved path, byte size, average transfer
+rate, SHA-256, and status recorded for each one.
+
+```bash
+camoufox-cli click @e1                     # a link/button that downloads a file
+camoufox-cli downloads --wait              # block until in-flight downloads finish, then list
+camoufox-cli downloads                     # list what has been captured this session
+camoufox-cli downloads cancel 0            # cancel an in-flight download by id
+camoufox-cli downloads clear               # forget the recorded downloads
+```
+
+`--wait` optionally takes a timeout in ms (`downloads --wait 10000`). Add
+`--json` for machine-readable output including `sha256` and `rateBytesPerSec`
+(an average over the whole transfer, not a live rate).
+
 ## Flags
 
 ```

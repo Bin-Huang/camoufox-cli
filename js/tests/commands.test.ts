@@ -174,6 +174,39 @@ describe("browser not launched", () => {
   });
 });
 
+describe("downloads command", () => {
+  let manager: BrowserManager;
+
+  beforeEach(() => {
+    manager = new BrowserManager();
+  });
+
+  it("list works before a browser is launched", async () => {
+    const resp = await execute(manager, { id: "r1", action: "downloads", params: { op: "list" } });
+    expect(resp.success).toBe(true);
+    expect((resp.data as any).downloads).toEqual([]);
+    expect((resp.data as any).dir).toBeTruthy();
+  });
+
+  it("clear succeeds", async () => {
+    const resp = await execute(manager, { id: "r1", action: "downloads", params: { op: "clear" } });
+    expect(resp.success).toBe(true);
+    expect((resp.data as any).cleared).toBe(true);
+  });
+
+  it("cancel without a valid id errors", async () => {
+    const resp = await execute(manager, { id: "r1", action: "downloads", params: { op: "cancel" } });
+    expect(resp.success).toBe(false);
+    expect(resp.error!.toLowerCase()).toContain("id");
+  });
+
+  it("cancel of an unknown id reports not cancelled", async () => {
+    const resp = await execute(manager, { id: "r1", action: "downloads", params: { op: "cancel", id: 42 } });
+    expect(resp.success).toBe(true);
+    expect((resp.data as any).cancelled).toBe(false);
+  });
+});
+
 describe("handler dispatch table coverage", () => {
   it("all expected actions exist", async () => {
     const manager = new BrowserManager();
@@ -181,7 +214,7 @@ describe("handler dispatch table coverage", () => {
       "open", "back", "forward", "reload", "url", "title", "close",
       "snapshot", "click", "fill", "type", "select", "check", "hover", "press",
       "text", "eval", "screenshot", "pdf", "scroll", "wait",
-      "tabs", "switch", "close-tab", "cookies",
+      "tabs", "switch", "close-tab", "cookies", "downloads",
     ];
     for (const action of knownActions) {
       const resp = await execute(manager, { id: "r1", action, params: {} });

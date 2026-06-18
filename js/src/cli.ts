@@ -259,6 +259,21 @@ export function buildCommand(action: string, rest: string[]): Record<string, unk
         return { id: "r1", action: "cookies", params: { op: "export", path: require_(rest, 2, "Usage: camoufox-cli cookies export file.json") } };
       return { id: "r1", action: "cookies", params: { op: "list" } };
     }
+    case "downloads": {
+      const sub = rest[1];
+      if (sub === "clear") return { id: "r1", action: "downloads", params: { op: "clear" } };
+      if (sub === "cancel")
+        return { id: "r1", action: "downloads", params: { op: "cancel", id: parseInt(require_(rest, 2, "Usage: camoufox-cli downloads cancel <id>"), 10) } };
+      // list (default). `--wait [ms]` blocks until in-flight downloads settle.
+      const wIdx = rest.indexOf("--wait");
+      const params: Record<string, unknown> = { op: "list" };
+      if (wIdx >= 0) {
+        params.wait = true;
+        const ms = rest[wIdx + 1];
+        if (ms && /^\d+$/.test(ms)) params.timeout = parseInt(ms, 10);
+      }
+      return { id: "r1", action: "downloads", params };
+    }
 
     default:
       process.stderr.write(`Unknown command: ${action}\n${USAGE}\n`);
@@ -283,6 +298,24 @@ export function printResponse(response: Record<string, unknown>, jsonMode: boole
 
   const data = response.data as Record<string, unknown> | undefined;
   if (!data) return;
+
+  if ("downloads" in data) {
+    const list = data.downloads as Array<Record<string, unknown>>;
+    if (list.length === 0) {
+      console.log(`(no downloads) dir: ${data.dir}`);
+    } else {
+      for (const d of list) {
+        const size = typeof d.bytes === "number" ? `${d.bytes}B` : "-";
+        const rate =
+          typeof d.rateBytesPerSec === "number"
+            ? `${(d.rateBytesPerSec / 1_000_000).toFixed(2)}MB/s avg`
+            : "-";
+        const extra = d.status === "finished" ? `${size} ${rate} sha256=${d.sha256}` : d.error || "";
+        console.log(`[${d.id}] ${d.status} ${d.filename} ${d.path || ""} ${extra}`.trimEnd());
+      }
+    }
+    return;
+  }
 
   if ("snapshot" in data) {
     console.log(data.snapshot);
@@ -478,6 +511,12 @@ Tabs:
 Session:
   sessions                List active sessions
   cookies [import|export] Manage cookies
+
+Downloads:
+  downloads [--wait [ms]] List saved downloads (--wait blocks for in-flight ones)
+  downloads cancel <id>   Cancel an in-flight download
+  downloads clear         Forget the recorded downloads
+                          Saved to $CAMOUFOX_DOWNLOAD_DIR (default ~/.camoufox/downloads)
 
 Setup:
   install [--with-deps]   Download browser (--with-deps: system libs)

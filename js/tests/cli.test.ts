@@ -231,6 +231,40 @@ describe("buildCommand", () => {
     expect((cmd.params as any).path).toBe("c.json");
   });
 
+  it("downloads list", () => {
+    const cmd = buildCommand("downloads", ["downloads"]);
+    expect(cmd.action).toBe("downloads");
+    expect((cmd.params as any).op).toBe("list");
+    expect((cmd.params as any).wait).toBeUndefined();
+  });
+
+  it("downloads --wait sets wait flag", () => {
+    const cmd = buildCommand("downloads", ["downloads", "--wait"]);
+    expect((cmd.params as any).wait).toBe(true);
+    expect((cmd.params as any).timeout).toBeUndefined();
+  });
+
+  it("downloads --wait <ms> sets timeout", () => {
+    const cmd = buildCommand("downloads", ["downloads", "--wait", "5000"]);
+    expect((cmd.params as any).wait).toBe(true);
+    expect((cmd.params as any).timeout).toBe(5000);
+  });
+
+  it("downloads cancel", () => {
+    const cmd = buildCommand("downloads", ["downloads", "cancel", "2"]);
+    expect((cmd.params as any).op).toBe("cancel");
+    expect((cmd.params as any).id).toBe(2);
+  });
+
+  it("downloads clear", () => {
+    const cmd = buildCommand("downloads", ["downloads", "clear"]);
+    expect((cmd.params as any).op).toBe("clear");
+  });
+
+  it("downloads cancel without id exits", () => {
+    expect(() => buildCommand("downloads", ["downloads", "cancel"])).toThrow("process.exit");
+  });
+
   // --- Error cases ---
   it("unknown command exits", () => {
     expect(() => buildCommand("nonexistent", ["nonexistent"])).toThrow("process.exit");

@@ -29,6 +29,39 @@ describe("BrowserManager", () => {
   });
 });
 
+describe("BrowserManager downloads", () => {
+  it("starts with no downloads", () => {
+    expect(new BrowserManager().getDownloads()).toEqual([]);
+  });
+
+  it("download dir honours $CAMOUFOX_DOWNLOAD_DIR", () => {
+    const prev = process.env.CAMOUFOX_DOWNLOAD_DIR;
+    process.env.CAMOUFOX_DOWNLOAD_DIR = "/tmp/cf-dl-test";
+    try {
+      expect(new BrowserManager().getDownloadDir()).toBe("/tmp/cf-dl-test");
+    } finally {
+      if (prev === undefined) delete process.env.CAMOUFOX_DOWNLOAD_DIR;
+      else process.env.CAMOUFOX_DOWNLOAD_DIR = prev;
+    }
+  });
+
+  it("clearDownloads empties the list", () => {
+    const manager = new BrowserManager();
+    manager.clearDownloads();
+    expect(manager.getDownloads()).toEqual([]);
+  });
+
+  it("cancelDownload returns false for an unknown id", async () => {
+    expect(await new BrowserManager().cancelDownload(999)).toBe(false);
+  });
+
+  it("waitForPendingDownloads resolves immediately when none pending", async () => {
+    const manager = new BrowserManager();
+    await manager.waitForPendingDownloads(5000); // must not hang
+    expect(manager.getDownloads()).toEqual([]);
+  });
+});
+
 describe("BrowserManager history", () => {
   it("pushHistory tracks urls", () => {
     const manager = new BrowserManager();
