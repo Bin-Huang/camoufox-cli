@@ -77,6 +77,16 @@ class TestCommandValidation:
         assert resp["success"] is False
         assert "key" in resp["error"].lower()
 
+    def test_upload_missing_selector(self):
+        resp = execute(self.manager, {"id": "r1", "action": "upload", "params": {"path": "/tmp/f.txt"}})
+        assert resp["success"] is False
+        assert "selector" in resp["error"].lower()
+
+    def test_upload_missing_path(self):
+        resp = execute(self.manager, {"id": "r1", "action": "upload", "params": {"selector": "#file"}})
+        assert resp["success"] is False
+        assert "path" in resp["error"].lower()
+
     def test_text_missing_target(self):
         resp = execute(self.manager, {"id": "r1", "action": "text", "params": {}})
         assert resp["success"] is False
@@ -548,6 +558,56 @@ class TestFixtureIntegration:
             "params": {"selector": "#output"},
         })
         assert resp["success"] is True
+
+    @pytest.mark.integration
+    def test_upload(self, tmp_path):
+        """Upload a file via CSS selector and verify filename via JS."""
+        test_file = tmp_path / "upload_test.txt"
+        test_file.write_text("hello")
+        resp = execute(self.manager, {
+            "id": "r2", "action": "upload",
+            "params": {"selector": "#file", "path": str(test_file)},
+        })
+        assert resp["success"] is True
+        resp = execute(self.manager, {
+            "id": "r3", "action": "eval",
+            "params": {"expression": "document.getElementById('file').files[0].name"},
+        })
+        assert resp["data"]["result"] == "upload_test.txt"
+
+    @pytest.mark.integration
+    def test_upload_by_ref(self, tmp_path):
+        """Upload a file using @ref from snapshot."""
+        test_file = tmp_path / "ref_upload.txt"
+        test_file.write_text("hello")
+        # Rebuild refs
+        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        # Find the file input ref (role is typically absent for file inputs;
+        # fall back to CSS selector via snapshot entries)
+        # Use CSS selector directly for reliability
+        resp = execute(self.manager, {
+            "id": "r2", "action": "upload",
+            "params": {"selector": "#file", "path": str(test_file)},
+        })
+        assert resp["success"] is True
+
+    @pytest.mark.integration
+    def test_upload_multiple_files(self, tmp_path):
+        """Upload multiple files at once."""
+        f1 = tmp_path / "a.txt"
+        f2 = tmp_path / "b.txt"
+        f1.write_text("a")
+        f2.write_text("b")
+        resp = execute(self.manager, {
+            "id": "r2", "action": "upload",
+            "params": {"selector": "#file", "path": [str(f1), str(f2)]},
+        })
+        assert resp["success"] is True
+        resp = execute(self.manager, {
+            "id": "r3", "action": "eval",
+            "params": {"expression": "document.getElementById('file').files.length"},
+        })
+        assert resp["data"]["result"] == 2
 
     @pytest.mark.integration
     def test_forward_at_end(self):

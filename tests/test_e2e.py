@@ -201,6 +201,14 @@ class TestE2E:
         assert resp["success"] is True
         assert "cookies" in resp["data"]
 
+    def test_upload_file(self, daemon, tmp_path):
+        test_file = tmp_path / "e2e_upload.txt"
+        test_file.write_text("e2e upload test")
+        resp = cmd(daemon, "upload", {"selector": "#file", "path": str(test_file)})
+        assert resp["success"] is True
+        resp = cmd(daemon, "eval", {"expression": "document.getElementById('file').files[0].name"})
+        assert resp["data"]["result"] == "e2e_upload.txt"
+
     def test_close_shuts_down_daemon(self):
         """Close command shuts down the daemon (run last, standalone)."""
         session = f"e2e-close-{os.getpid()}-{int(time.time())}"

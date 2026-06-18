@@ -159,6 +159,35 @@ def _cmd_fill(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
+def _cmd_upload(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+    # Supports both:
+    #   trigger_selector: clicks a button to open file chooser (expect_file_chooser approach)
+    #   selector: sets files directly on a file input element
+    trigger_selector = params.get("trigger_selector", "")
+    selector = params.get("selector", "")
+    path = params.get("path", "")
+    if not path:
+        return error_response(cmd_id, "Missing 'path' parameter")
+    if not trigger_selector and not selector:
+        return error_response(cmd_id, "Missing 'trigger_selector' or 'selector' parameter")
+    page = manager.get_page()
+    if trigger_selector:
+        # Use expect_file_chooser to handle React/trusted event file pickers
+        trigger_locator = _resolve_ref(manager, trigger_selector) if trigger_selector.startswith("@") else page.locator(trigger_selector)
+        force = params.get("force", False)
+        with page.expect_file_chooser() as fc_info:
+            if force:
+                trigger_locator.dispatch_event("click")
+            else:
+                trigger_locator.click()
+        file_chooser = fc_info.value
+        file_chooser.set_files(path)
+    else:
+        locator = _resolve_ref(manager, selector) if selector.startswith("@") else page.locator(selector)
+        locator.set_input_files(path)
+    return ok_response(cmd_id)
+
+
 def _cmd_type(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     ref_str = params.get("ref", "")
     text = params.get("text", "")
@@ -350,6 +379,16 @@ def _cmd_cookies(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
         return error_response(cmd_id, f"Unknown cookies op: {op}")
 
 
+def _cmd_add_init_script(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+    """Add an init script that runs before every page load."""
+    script = params.get("script", "")
+    if not script:
+        return error_response(cmd_id, "Missing 'script' parameter")
+    ctx = manager.get_context()
+    ctx.add_init_script(script)
+    return ok_response(cmd_id)
+
+
 # ---------------------------------------------------------------------------
 # Handler dispatch table
 # ---------------------------------------------------------------------------
@@ -368,6 +407,7 @@ _HANDLERS = {
     # Interaction
     "click": _cmd_click,
     "fill": _cmd_fill,
+    "upload": _cmd_upload,
     "type": _cmd_type,
     "select": _cmd_select,
     "check": _cmd_check,
@@ -387,4 +427,6 @@ _HANDLERS = {
     "close-tab": _cmd_close_tab,
     # Cookies
     "cookies": _cmd_cookies,
+    # Init script
+    "add_init_script": _cmd_add_init_script,
 }
