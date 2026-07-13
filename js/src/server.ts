@@ -114,6 +114,9 @@ export class DaemonServer {
   private claimPid(): void {
     const tmpPath = `${this.pidPath}.${process.pid}`;
     fs.writeFileSync(tmpPath, String(process.pid));
+    // process.exit() does NOT run finally blocks, so remove the temp file
+    // explicitly before every exit as well as on the normal return path.
+    const rmTmp = () => { try { fs.unlinkSync(tmpPath); } catch {} };
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
@@ -126,6 +129,7 @@ export class DaemonServer {
             const pid = parseInt(fs.readFileSync(this.pidPath, "utf-8").trim(), 10);
             process.kill(pid, 0); // Check if alive
             process.stderr.write(`[camoufox-cli] Daemon already running (pid ${pid})\n`);
+            rmTmp();
             process.exit(1);
           } catch {
             // Stale pid, clean up and retry
@@ -134,9 +138,10 @@ export class DaemonServer {
         }
       }
       process.stderr.write(`[camoufox-cli] Could not claim pid file, another daemon is starting\n`);
+      rmTmp();
       process.exit(1);
     } finally {
-      try { fs.unlinkSync(tmpPath); } catch {}
+      rmTmp();
     }
   }
 
