@@ -190,9 +190,8 @@ camoufox-cli --tab inbox-scan-x4q close-tab     # Free a tab when its agent is d
 
 **Picking your tab name.** Nothing enforces uniqueness — two agents using the same name share one page pointer and will clobber each other. Follow these rules:
 
-1. If your instructions already assign you a tab name, use exactly that. (Coordinators: assign each subagent a unique tab name when spawning them — you are the only one who can guarantee no collisions.)
-2. Otherwise, make one up ONCE at the start of your task: a short slug of *your specific task* plus 2-3 random characters (e.g. `price-scan-k3f`), then reuse it verbatim in every subsequent command.
-3. NEVER pick a generic name like `agent1`, `main`, `work`, or `browser` — every other agent reading this same document would "reasonably" pick the same one. If unsure, run `camoufox-cli tabs` to see which names are already taken.
+1. Make up your name ONCE at the start of your task: a short slug of *your specific task* plus 2-3 random characters (e.g. `price-scan-k3f`), then reuse it verbatim in every subsequent command. (If your instructions explicitly assign you a tab name, use that instead.)
+2. NEVER pick a generic name like `agent1`, `main`, `work`, or `browser` — every other agent reading this same document would "reasonably" pick the same one. If unsure, run `camoufox-cli tabs` to see which names are already taken.
 
 Use tabs when subagents should act as the same identity (e.g. all operating the same logged-in account). Note `close` still shuts down the whole browser for every tab — a finishing subagent should use `close-tab` instead, and only the coordinator should run `close` at the end.
 
@@ -239,7 +238,7 @@ camoufox-cli --session shop-b-buyer open https://site-b.com
 camoufox-cli sessions                  # Check active sessions
 ```
 
-Names are just strings and nothing enforces uniqueness — follow the "Picking your tab name" rules above (coordinator-assigned, or task slug + random suffix; never generic names). The same applies to session names.
+Names are just strings and nothing enforces uniqueness — follow the "Picking your tab name" rules above (task slug + random suffix, chosen once; never generic names). The same applies to session names.
 
 Always close your browser session when done to avoid leaked processes:
 

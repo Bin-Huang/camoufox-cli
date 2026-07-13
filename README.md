@@ -142,7 +142,7 @@ camoufox-cli --tab inbox-scan-x4q snapshot -i   # refs are per tab
 camoufox-cli --tab inbox-scan-x4q close-tab     # free a tab when its agent is done
 ```
 
-Tab names must be unique per agent (nothing enforces this): have the coordinator assign them, or use a task slug plus a short random suffix. Avoid generic names like `agent1` — concurrent agents following the same convention will collide.
+Tab names must be unique per agent (nothing enforces this): use a task slug plus a short random suffix, chosen once and reused. Avoid generic names like `agent1` — concurrent agents following the same convention will collide.
 
 ```bash
 ```
