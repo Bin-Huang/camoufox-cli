@@ -61,17 +61,25 @@ def _cmd_open(manager: TabView, cmd_id: str, params: dict) -> dict:
         manager.launch(headless=params.get("headless", True))
 
     try:
-        page = manager.get_page()
+        page = manager.get_page(create=True)
         page.goto(url, wait_until="domcontentloaded")
     except Exception as e:
-        if "has been closed" in str(e):
-            # Browser crashed or was closed externally — relaunch
+        if "has been closed" not in str(e):
+            raise
+        # "...has been closed" covers both a dead page and a dead browser.
+        # Try recreating just this tab's page first — that leaves every other
+        # tab in the shared browser untouched. Only if that also fails (the
+        # whole browser/context is gone) fall back to a full relaunch.
+        try:
+            page = manager.get_page(create=True)
+            page.goto(url, wait_until="domcontentloaded")
+        except Exception as e2:
+            if "has been closed" not in str(e2):
+                raise
             manager.close()
             manager.launch(headless=params.get("headless", True))
-            page = manager.get_page()
+            page = manager.get_page(create=True)
             page.goto(url, wait_until="domcontentloaded")
-        else:
-            raise
 
     manager.push_history(page.url)
     return ok_response(cmd_id, {"url": page.url, "title": page.title()})
@@ -318,8 +326,10 @@ def _cmd_switch(manager: TabView, cmd_id: str, params: dict) -> dict:
 
 def _cmd_close_tab(manager: TabView, cmd_id: str, params: dict) -> dict:
     manager.close_current_tab()
-    page = manager.get_page()
-    return ok_response(cmd_id, {"url": page.url, "title": page.title()})
+    # Don't call get_page() here — the tab is gone, and recreating a page would
+    # both defeat the purpose (freeing the agent's page) and, pre-fix, hand back
+    # another agent's page.
+    return ok_response(cmd_id, {"closed": True})
 
 
 # ---------------------------------------------------------------------------

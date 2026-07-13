@@ -243,6 +243,23 @@ class TestE2E:
         resp = cmd(daemon, "close-tab", tab="c")
         assert resp["success"] is True
 
+    def test_close_tab_does_not_hijack_another_tab(self, daemon):
+        # Two agents, each on its own page.
+        cmd(daemon, "open", {"url": "data:text/html,<title>KEEP</title>"}, tab="keep")
+        cmd(daemon, "open", {"url": "data:text/html,<title>GOING</title>"}, tab="going")
+        # The finishing agent closes its tab.
+        assert cmd(daemon, "close-tab", tab="going")["success"] is True
+        # The other agent must still be on its OWN page, not a hijacked one.
+        resp = cmd(daemon, "title", tab="keep")
+        assert resp["data"]["title"] == "KEEP"
+
+    def test_command_on_pageless_tab_errors(self, daemon):
+        # A read command on a tab that never opened a page fails loudly instead
+        # of silently creating a blank page and returning garbage.
+        resp = cmd(daemon, "title", tab="never-opened-xyz")
+        assert resp["success"] is False
+        assert "no open page" in resp["error"]
+
     def test_close_shuts_down_daemon(self):
         """Close command shuts down the daemon (run last, standalone)."""
         session = f"e2e-close-{os.getpid()}-{int(time.time())}"

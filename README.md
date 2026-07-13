@@ -144,9 +144,6 @@ camoufox-cli --tab inbox-scan-x4q close-tab     # free a tab when its agent is d
 
 Tab names must be unique per agent (nothing enforces this): use a task slug plus a short shell-generated random suffix (e.g. `price-scan-$(openssl rand -hex 2)`), chosen once and reused.
 
-```bash
-```
-
 ### Sessions
 
 Each named session is a separate browser process with its own randomly-generated fingerprint and its own cookies. Use sessions for isolated identities, named tabs (above) for cheap parallelism under one identity. For real multi-account isolation, combine sessions with a per-session proxy (config file) and `--persistent` — see Persistent Identity below:

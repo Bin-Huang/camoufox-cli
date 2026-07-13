@@ -30,6 +30,9 @@ function ensureBrowserInstalled(): void {
  */
 export class TabState {
   page: Page | null = null;
+  // In-flight ctx.newPage() shared by concurrent commands for this tab, so
+  // they don't each create (and orphan) a page. Cleared once it settles.
+  pagePromise?: Promise<Page>;
   refs = new RefRegistry();
   // Camoufox spoofs history API for anti-fingerprinting,
   // so we track navigation history ourselves.
@@ -71,6 +74,12 @@ export class BrowserManager {
     this.launching = this.doLaunch(headless, tab);
     try {
       await this.launching;
+    } catch (e) {
+      // A failure partway through doLaunch can leave this.browser set but the
+      // context/page missing; without this rollback every later launch() would
+      // short-circuit on `this.browser || this.context` and wedge the daemon.
+      await this.close();
+      throw e;
     } finally {
       this.launching = null;
     }
@@ -150,16 +159,24 @@ export class BrowserManager {
   }
 
   /**
-   * Get the tab's page, lazily creating one in the shared context.
+   * Get the tab's page.
    *
-   * A new tab gets its own page (same fingerprint and cookies as every
-   * other tab); a tab whose page was closed gets a fresh one.
+   * With `create` (navigation commands only) a missing/closed page is lazily
+   * (re)created in the shared context — a new tab gets its own page with the
+   * same fingerprint and cookies as every other tab. Without it, a command on
+   * a tab that never opened a page throws instead of silently operating on a
+   * blank about:blank (which would also leak a stray page per misrouted tab).
    */
-  async getPage(tab: string = "default"): Promise<Page> {
+  async getPage(tab: string = "default", create: boolean = false): Promise<Page> {
     const ctx = this.getContext();
     const st = this.tabState(tab);
     if (!st.page || st.page.isClosed()) {
-      st.page = await ctx.newPage();
+      if (!create) throw new Error(`Tab '${tab}' has no open page. Send 'open <url>' first.`);
+      // The daemon handles connections concurrently, so cache the in-flight
+      // newPage() — otherwise two commands for the same fresh tab each create
+      // a page and one is orphaned in the context forever.
+      st.pagePromise ??= ctx.newPage().finally(() => { st.pagePromise = undefined; });
+      st.page = await st.pagePromise;
     }
     return st.page;
   }
@@ -198,25 +215,29 @@ export class BrowserManager {
     }
     const st = this.tabState(tab);
     st.page = pages[index];
+    // The refs and history describe the previous page, not this one — reset
+    // them so a stale @ref can't resolve against the newly-adopted page.
+    st.refs = new RefRegistry();
+    st.history = [];
+    st.historyIndex = -1;
     await st.page.bringToFront();
     return st.page;
   }
 
   async closeCurrentTab(tab: string = "default"): Promise<void> {
     const ctx = this.getContext();
-    const pages = ctx.pages();
-    if (pages.length <= 1) {
-      throw new Error("Cannot close the last tab. Use 'close' to shut down the browser.");
-    }
     const st = this.tabs.get(tab);
     if (!st?.page || st.page.isClosed()) {
       throw new Error(`Tab '${tab}' has no open page.`);
     }
+    if (ctx.pages().length <= 1) {
+      throw new Error("Cannot close the last tab. Use 'close' to shut down the browser.");
+    }
+    // Close only this tab's own page and forget the tab. Don't repoint to a
+    // neighbor page — under the shared-browser model that page belongs to
+    // another agent, so repointing would silently hijack it.
     const current = st.page;
-    const idx = pages.indexOf(current);
-    const newIdx = idx > 0 ? idx - 1 : 1;
-    st.page = pages[newIdx];
-    await st.page.bringToFront();
+    this.tabs.delete(tab);
     await current.close();
   }
 
@@ -225,7 +246,7 @@ export class BrowserManager {
     if (st.historyIndex <= 0) return null;
     st.historyIndex--;
     const url = st.history[st.historyIndex];
-    await (await this.getPage(tab)).goto(url, { waitUntil: "domcontentloaded" });
+    await (await this.getPage(tab, true)).goto(url, { waitUntil: "domcontentloaded" });
     return url;
   }
 
@@ -234,7 +255,7 @@ export class BrowserManager {
     if (st.historyIndex >= st.history.length - 1) return null;
     st.historyIndex++;
     const url = st.history[st.historyIndex];
-    await (await this.getPage(tab)).goto(url, { waitUntil: "domcontentloaded" });
+    await (await this.getPage(tab, true)).goto(url, { waitUntil: "domcontentloaded" });
     return url;
   }
 
@@ -278,8 +299,8 @@ export class TabView {
     return this.manager.launch(headless, this.tab);
   }
 
-  getPage(): Promise<Page> {
-    return this.manager.getPage(this.tab);
+  getPage(create: boolean = false): Promise<Page> {
+    return this.manager.getPage(this.tab, create);
   }
 
   getContext(): BrowserContext {

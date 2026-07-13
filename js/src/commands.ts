@@ -29,20 +29,27 @@ const cmdOpen: Handler = async (manager, cmdId, params) => {
   }
 
   try {
-    const page = (await manager.getPage());
+    const page = (await manager.getPage(true));
     await page.goto(url, { waitUntil: "domcontentloaded" });
   } catch (e: any) {
-    if (String(e).includes("has been closed")) {
+    if (!String(e).includes("has been closed")) throw e;
+    // "...has been closed" covers both a dead page and a dead browser. Try
+    // recreating just this tab's page first — that leaves every other tab in
+    // the shared browser untouched. Only if that also fails (the whole
+    // browser/context is gone) fall back to a full relaunch.
+    try {
+      const page = (await manager.getPage(true));
+      await page.goto(url, { waitUntil: "domcontentloaded" });
+    } catch (e2: any) {
+      if (!String(e2).includes("has been closed")) throw e2;
       await manager.close();
       await manager.launch(params.headless as boolean ?? true);
-      const page = (await manager.getPage());
+      const page = (await manager.getPage(true));
       await page.goto(url, { waitUntil: "domcontentloaded" });
-    } else {
-      throw e;
     }
   }
 
-  const page = (await manager.getPage());
+  const page = (await manager.getPage(true));
   manager.pushHistory(page.url());
   return okResponse(cmdId, { url: page.url(), title: await page.title() });
 };
@@ -271,8 +278,10 @@ const cmdSwitch: Handler = async (manager, cmdId, params) => {
 
 const cmdCloseTab: Handler = async (manager, cmdId) => {
   await manager.closeCurrentTab();
-  const page = (await manager.getPage());
-  return okResponse(cmdId, { url: page.url(), title: await page.title() });
+  // Don't call getPage() here — the tab is gone, and recreating a page would
+  // both defeat the purpose (freeing the agent's page) and, pre-fix, hand back
+  // another agent's page.
+  return okResponse(cmdId, { closed: true });
 };
 
 // ---------------------------------------------------------------------------

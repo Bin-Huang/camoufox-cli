@@ -243,6 +243,21 @@ describe("e2e", { timeout: 120_000 }, () => {
     const resp = await cmd(SOCK_PATH, "close-tab", {}, "r1", "c");
     expect(resp.success).toBe(true);
   });
+
+  it("close-tab does not hijack another tab", async () => {
+    await cmd(SOCK_PATH, "open", { url: "data:text/html,<title>KEEP</title>" }, "r1", "keep");
+    await cmd(SOCK_PATH, "open", { url: "data:text/html,<title>GOING</title>" }, "r1", "going");
+    expect((await cmd(SOCK_PATH, "close-tab", {}, "r1", "going")).success).toBe(true);
+    // The other agent must still be on its OWN page, not a hijacked one.
+    const resp = await cmd(SOCK_PATH, "title", {}, "r1", "keep");
+    expect(resp.data.title).toBe("KEEP");
+  });
+
+  it("a command on a page-less tab errors instead of returning a blank page", async () => {
+    const resp = await cmd(SOCK_PATH, "title", {}, "r1", "never-opened-xyz");
+    expect(resp.success).toBe(false);
+    expect(resp.error).toContain("no open page");
+  });
 });
 
 describe("e2e close shuts down daemon", { timeout: 30_000 }, () => {

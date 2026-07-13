@@ -106,31 +106,39 @@ class BrowserManager:
             if locales:
                 kwargs["locale"] = locales if len(locales) > 1 else locales[0]
 
-        self._camoufox = Camoufox(**kwargs)
-        result = self._camoufox.__enter__()
+        # A failure partway through leaves _camoufox set but the context/page
+        # missing; without this cleanup every later launch() would short-circuit
+        # on `_camoufox is not None` and the daemon would be wedged forever.
+        try:
+            self._camoufox = Camoufox(**kwargs)
+            result = self._camoufox.__enter__()
 
-        if self._persistent:
-            # persistent_context returns BrowserContext directly
-            self._context = result
-            pages = self._context.pages
-            page = pages[0] if pages else self._context.new_page()
-        else:
-            # Normal mode: result is Browser. Create an explicit context so
-            # more tabs can be added later — the implicit context made by
-            # browser.new_page() refuses context.new_page().
-            self._context = result.new_context()
-            page = self._context.new_page()
-        self.state(tab).page = page
+            if self._persistent:
+                # persistent_context returns BrowserContext directly
+                self._context = result
+                pages = self._context.pages
+                page = pages[0] if pages else self._context.new_page()
+            else:
+                # Normal mode: result is Browser. Create an explicit context so
+                # more tabs can be added later — the implicit context made by
+                # browser.new_page() refuses context.new_page().
+                self._context = result.new_context()
+                page = self._context.new_page()
+            self.state(tab).page = page
 
-        # Workaround: Playwright's Firefox (Juggler) fails proxy auth on HTTPS
-        # CONNECT tunnels, raising NS_ERROR_PROXY_AUTHENTICATION_FAILED.
-        # Inject Basic auth as an extra HTTP header like WebKit/Chromium do.
-        if proxy_settings and proxy_settings.get("username"):
-            creds = f"{proxy_settings['username']}:{proxy_settings.get('password', '')}"
-            token = base64.b64encode(creds.encode()).decode()
-            self._context.set_extra_http_headers(
-                {"Proxy-Authorization": f"Basic {token}"}
-            )
+            # Workaround: Playwright's Firefox (Juggler) fails proxy auth on HTTPS
+            # CONNECT tunnels, raising NS_ERROR_PROXY_AUTHENTICATION_FAILED.
+            # Inject Basic auth as an extra HTTP header like WebKit/Chromium do.
+            if proxy_settings and proxy_settings.get("username"):
+                creds = f"{proxy_settings['username']}:{proxy_settings.get('password', '')}"
+                token = base64.b64encode(creds.encode()).decode()
+                self._context.set_extra_http_headers(
+                    {"Proxy-Authorization": f"Basic {token}"}
+                )
+        except Exception:
+            # Roll back partial state so a later launch() can retry cleanly.
+            self.close()
+            raise
 
     def state(self, tab: str) -> TabState:
         """Get (lazily creating) the state record for a named tab."""
@@ -140,15 +148,21 @@ class BrowserManager:
             self._tabs[tab] = st
         return st
 
-    def get_page(self, tab: str = "default") -> Page:
-        """Get the tab's page, lazily creating one in the shared context.
+    def get_page(self, tab: str = "default", create: bool = False) -> Page:
+        """Get the tab's page.
 
-        A new tab gets its own page (same fingerprint and cookies as every
-        other tab); a tab whose page was closed gets a fresh one.
+        With ``create`` (navigation commands only) a missing/closed page is
+        lazily (re)created in the shared context — a new tab gets its own page
+        with the same fingerprint and cookies as every other tab. Without it,
+        a command on a tab that never opened a page fails loudly instead of
+        silently operating on a blank about:blank (which would also leak a
+        stray page per misrouted/typo'd tab name).
         """
         ctx = self.get_context()
         st = self.state(tab)
         if st.page is None or st.page.is_closed():
+            if not create:
+                raise RuntimeError(f"Tab '{tab}' has no open page. Send 'open <url>' first.")
             st.page = ctx.new_page()
         return st.page
 
@@ -182,24 +196,26 @@ class BrowserManager:
             raise IndexError(f"Tab index {index} out of range (0-{len(pages) - 1})")
         st = self.state(tab)
         st.page = pages[index]
+        # The refs and history describe the previous page, not this one — reset
+        # them so a stale @ref can't resolve against the newly-adopted page.
+        st.refs = RefRegistry()
+        st.history = []
+        st.history_index = -1
         st.page.bring_to_front()
         return st.page
 
     def close_current_tab(self, tab: str = "default") -> None:
         ctx = self.get_context()
-        pages = ctx.pages
-        if len(pages) <= 1:
-            raise RuntimeError("Cannot close the last tab. Use 'close' to shut down the browser.")
         st = self._tabs.get(tab)
         if st is None or st.page is None or st.page.is_closed():
             raise RuntimeError(f"Tab '{tab}' has no open page.")
-        current = st.page
-        # Switch to another tab before closing
-        idx = pages.index(current)
-        new_idx = idx - 1 if idx > 0 else 1
-        st.page = pages[new_idx]
-        st.page.bring_to_front()
-        current.close()
+        if len(ctx.pages) <= 1:
+            raise RuntimeError("Cannot close the last tab. Use 'close' to shut down the browser.")
+        # Close only this tab's own page and forget the tab. Don't repoint to a
+        # neighbor page — under the shared-browser model that page belongs to
+        # another agent, so repointing would silently hijack it.
+        st.page.close()
+        del self._tabs[tab]
 
     def go_back(self, tab: str = "default") -> str | None:
         """Go back in the tab's history. Returns the URL or None if at start."""
@@ -208,7 +224,7 @@ class BrowserManager:
             return None
         st.history_index -= 1
         url = st.history[st.history_index]
-        self.get_page(tab).goto(url, wait_until="domcontentloaded")
+        self.get_page(tab, create=True).goto(url, wait_until="domcontentloaded")
         return url
 
     def go_forward(self, tab: str = "default") -> str | None:
@@ -218,7 +234,7 @@ class BrowserManager:
             return None
         st.history_index += 1
         url = st.history[st.history_index]
-        self.get_page(tab).goto(url, wait_until="domcontentloaded")
+        self.get_page(tab, create=True).goto(url, wait_until="domcontentloaded")
         return url
 
     def close(self) -> None:
@@ -259,8 +275,8 @@ class TabView:
     def launch(self, headless: bool = True) -> None:
         self._manager.launch(headless=headless, tab=self.tab)
 
-    def get_page(self) -> Page:
-        return self._manager.get_page(self.tab)
+    def get_page(self, create: bool = False) -> Page:
+        return self._manager.get_page(self.tab, create=create)
 
     def get_context(self) -> BrowserContext:
         return self._manager.get_context()
