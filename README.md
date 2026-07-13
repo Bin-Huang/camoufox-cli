@@ -136,10 +136,15 @@ camoufox-cli close-tab                    # Close current tab
 Named tabs let concurrent agents share one browser — same fingerprint, same cookies/login state — while each keeps its own page, element refs, and history. Tabs share one browser process (commands from different tabs may queue behind a slow one); separate sessions run as independent processes in parallel:
 
 ```bash
-camoufox-cli --tab agent1 open https://app.example.com/a
-camoufox-cli --tab agent2 open https://app.example.com/b
-camoufox-cli --tab agent1 snapshot -i     # refs are per tab
-camoufox-cli --tab agent1 close-tab       # free a tab when its agent is done
+camoufox-cli --tab inbox-scan-x4q open https://app.example.com/a
+camoufox-cli --tab report-pull-9kf open https://app.example.com/b
+camoufox-cli --tab inbox-scan-x4q snapshot -i   # refs are per tab
+camoufox-cli --tab inbox-scan-x4q close-tab     # free a tab when its agent is done
+```
+
+Tab names must be unique per agent (nothing enforces this): have the coordinator assign them, or use a task slug plus a short random suffix. Avoid generic names like `agent1` — concurrent agents following the same convention will collide.
+
+```bash
 ```
 
 ### Sessions

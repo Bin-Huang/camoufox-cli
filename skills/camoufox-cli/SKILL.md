@@ -105,7 +105,7 @@ camoufox-cli wait --url "*/dashboard" # Wait for URL pattern
 camoufox-cli tabs                    # List open tabs (with owner names)
 camoufox-cli switch 2                # Switch to tab by index
 camoufox-cli close-tab               # Close current tab
-camoufox-cli --tab worker1 open <url> # Named tab: shared browser + login, own page/refs
+camoufox-cli --tab <unique-name> open <url> # Named tab: shared browser + login, own page/refs
 
 # Cookies & State
 camoufox-cli cookies                 # Dump cookies as JSON
@@ -181,15 +181,20 @@ camoufox-cli snapshot -i
 Named tabs share one browser within a session — same fingerprint, same cookies/login state — but each tab keeps its own page, element refs, and navigation history, so concurrent agents never clobber each other. This is the cheap way to parallelize: one Firefox total, roughly 50-150MB per extra tab.
 
 ```bash
-camoufox-cli --tab agent1 open https://app.example.com/inbox
-camoufox-cli --tab agent2 open https://app.example.com/reports
-camoufox-cli --tab agent1 snapshot -i   # refs are per tab
-camoufox-cli --tab agent2 snapshot -i
-camoufox-cli tabs                       # Lists every tab with its owner name
-camoufox-cli --tab agent1 close-tab     # Free a tab when its agent is done
+camoufox-cli --tab inbox-scan-x4q open https://app.example.com/inbox
+camoufox-cli --tab report-pull-9kf open https://app.example.com/reports
+camoufox-cli --tab inbox-scan-x4q snapshot -i   # refs are per tab
+camoufox-cli tabs                               # Lists every tab with its owner name
+camoufox-cli --tab inbox-scan-x4q close-tab     # Free a tab when its agent is done
 ```
 
-Use this when subagents should act as the same identity (e.g. all operating the same logged-in account). Note `close` still shuts down the whole browser for every tab — a finishing subagent should use `close-tab` instead, and only the coordinator should run `close` at the end.
+**Picking your tab name.** Nothing enforces uniqueness — two agents using the same name share one page pointer and will clobber each other. Follow these rules:
+
+1. If your instructions already assign you a tab name, use exactly that. (Coordinators: assign each subagent a unique tab name when spawning them — you are the only one who can guarantee no collisions.)
+2. Otherwise, make one up ONCE at the start of your task: a short slug of *your specific task* plus 2-3 random characters (e.g. `price-scan-k3f`), then reuse it verbatim in every subsequent command.
+3. NEVER pick a generic name like `agent1`, `main`, `work`, or `browser` — every other agent reading this same document would "reasonably" pick the same one. If unsure, run `camoufox-cli tabs` to see which names are already taken.
+
+Use tabs when subagents should act as the same identity (e.g. all operating the same logged-in account). Note `close` still shuts down the whole browser for every tab — a finishing subagent should use `close-tab` instead, and only the coordinator should run `close` at the end.
 
 Tabs share one browser process, so commands from different tabs may queue behind a slow navigation or `wait`; separate sessions run as independent processes and execute fully in parallel. If a few agents are extremely command-heavy, consider giving those their own session and keeping the rest on tabs.
 
@@ -224,25 +229,25 @@ When running multiple agents or automations concurrently, give each agent its ow
 
 ```bash
 # Shared identity: 3 agents, one browser, one login
-camoufox-cli --tab agent1 open https://app.example.com/a
-camoufox-cli --tab agent2 open https://app.example.com/b
-camoufox-cli --tab agent3 open https://app.example.com/c
+camoufox-cli --tab orders-audit-p2m open https://app.example.com/a
+camoufox-cli --tab user-export-j8w open https://app.example.com/b
+camoufox-cli --tab billing-check-r4t open https://app.example.com/c
 
 # Isolated identities: 2 agents, two browsers
-camoufox-cli --session agent1 open https://site-a.com
-camoufox-cli --session agent2 open https://site-b.com
+camoufox-cli --session shop-a-buyer open https://site-a.com
+camoufox-cli --session shop-b-buyer open https://site-b.com
 camoufox-cli sessions                  # Check active sessions
 ```
 
-Names are just strings — make them unique per agent (e.g. include a task id). Two agents using the same tab/session name will clobber each other.
+Names are just strings and nothing enforces uniqueness — follow the "Picking your tab name" rules above (coordinator-assigned, or task slug + random suffix; never generic names). The same applies to session names.
 
 Always close your browser session when done to avoid leaked processes:
 
 ```bash
-camoufox-cli --tab agent1 close-tab    # Free one tab (browser keeps running)
-camoufox-cli close                     # Close default session (all its tabs)
-camoufox-cli --session agent1 close    # Close specific session
-camoufox-cli close --all               # Close all sessions
+camoufox-cli --tab orders-audit-p2m close-tab   # Free one tab (browser keeps running)
+camoufox-cli close                              # Close default session (all its tabs)
+camoufox-cli --session shop-a-buyer close       # Close specific session
+camoufox-cli close --all                        # Close all sessions
 ```
 
 Note `close` shuts down the whole session's browser for every tab in it — finishing subagents should use `close-tab`; the coordinator runs `close` at the end.
