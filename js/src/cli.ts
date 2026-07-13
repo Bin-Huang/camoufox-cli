@@ -63,17 +63,24 @@ function spawnDaemon(session: string, headed: boolean, timeout: number, persiste
 async function ensureDaemon(session: string, headed: boolean, timeout: number, persistent: string | null, proxy: string | null = null, geoip: boolean = true, locale: string | null = null): Promise<void> {
   const sockPath = getSocketPath(session);
   if (fs.existsSync(sockPath)) {
-    // Verify daemon is alive
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const s = net.createConnection(sockPath, () => { s.destroy(); resolve(); });
-        s.on("error", reject);
-        s.setTimeout(2000, () => { s.destroy(); reject(new Error("timeout")); });
-      });
-      return;
-    } catch {
-      try { fs.unlinkSync(sockPath); } catch {}
+    // Verify the daemon is alive. Retry a few times before giving up: a
+    // momentarily busy daemon can transiently refuse a connect, and deleting a
+    // live daemon's socket would make the respawn lose the pid claim and exit,
+    // leaving the session unreachable.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const s = net.createConnection(sockPath, () => { s.destroy(); resolve(); });
+          s.on("error", reject);
+          s.setTimeout(2000, () => { s.destroy(); reject(new Error("timeout")); });
+        });
+        return;
+      } catch {
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+      }
     }
+    // Consistently unreachable — treat as a stale socket from a dead daemon.
+    try { fs.unlinkSync(sockPath); } catch {}
   }
   await spawnDaemon(session, headed, timeout, persistent, proxy, geoip, locale);
 }

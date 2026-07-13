@@ -1,6 +1,8 @@
 """Tests for daemon pid-file claiming (startup race hardening)."""
 
 import os
+import subprocess
+import sys
 import time
 
 import pytest
@@ -13,7 +15,12 @@ def server():
     session = f"claim-test-{os.getpid()}-{time.monotonic_ns()}"
     srv = DaemonServer(session=session)
     yield srv
-    for path in (srv.pid_path, srv.socket_path):
+    if srv._lock_fd is not None:
+        try:
+            os.close(srv._lock_fd)
+        except OSError:
+            pass
+    for path in (srv.pid_path, srv.socket_path, srv.lock_path):
         try:
             os.unlink(path)
         except FileNotFoundError:
@@ -42,6 +49,36 @@ class TestClaimPid:
         server._claim_pid()
         with open(server.pid_path) as f:
             assert f.read().strip() == str(os.getpid())
+
+    def test_concurrent_claims_single_winner_with_stale_pid(self, server):
+        """With a stale pid file and many daemons racing, exactly one acquires
+        the session lock and the pid file holds that winner. A read-then-unlink
+        scheme could let two racers both 'win'; the flock cannot."""
+        with open(server.pid_path, "w") as f:
+            f.write("999999999")  # stale pid left by a crashed daemon
+
+        # The winner holds the lock (sleeps) through the race window, mirroring a
+        # real daemon that keeps running; losers hit LOCK_NB and exit at once.
+        worker = (
+            "import sys, os, time\n"
+            "from camoufox_cli.server import DaemonServer\n"
+            "srv = DaemonServer(session=sys.argv[1])\n"
+            "srv._claim_pid()\n"                  # losers sys.exit(1) here
+            "print(os.getpid(), flush=True)\n"    # only a winner reaches here
+            "time.sleep(1.5)\n"
+        )
+        procs = [
+            subprocess.Popen(
+                [sys.executable, "-c", worker, server.session],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            )
+            for _ in range(12)
+        ]
+        winners = [out.strip() for p in procs for out in [p.communicate()[0]] if out.strip()]
+
+        assert len(winners) == 1, f"expected exactly one winner, got {winners}"
+        with open(server.pid_path) as f:
+            assert f.read().strip() == winners[0]
 
     def test_claim_removes_leftover_socket(self, server):
         with open(server.socket_path, "w") as f:

@@ -68,19 +68,26 @@ def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | Non
 def ensure_daemon(session: str, headed: bool, timeout: int, persistent: str | None, proxy: str | None = None, geoip: bool = True, locale: str | None = None) -> None:
     sock_path = get_socket_path(session)
     if os.path.exists(sock_path):
-        # Verify daemon is actually alive by trying to connect
-        try:
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            s.settimeout(2)
-            s.connect(sock_path)
-            s.close()
-            return
-        except (ConnectionRefusedError, OSError):
-            # Stale socket from a dead daemon — clean up
+        # Verify the daemon is actually alive. Retry a few times before giving
+        # up: a momentarily busy daemon (accept backlog full while it handles a
+        # slow command) can transiently refuse a connect, and we must not delete
+        # a live daemon's socket and respawn — the respawn would lose the pid
+        # claim and exit, leaving the session unreachable.
+        for attempt in range(3):
             try:
-                os.unlink(sock_path)
-            except FileNotFoundError:
-                pass
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                s.settimeout(2)
+                s.connect(sock_path)
+                s.close()
+                return
+            except (ConnectionRefusedError, OSError):
+                if attempt < 2:
+                    time.sleep(0.2 * (attempt + 1))
+        # Consistently unreachable — treat as a stale socket from a dead daemon.
+        try:
+            os.unlink(sock_path)
+        except FileNotFoundError:
+            pass
     spawn_daemon(session, headed, timeout, persistent, proxy, geoip, locale)
 
 

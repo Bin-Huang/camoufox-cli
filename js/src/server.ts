@@ -102,14 +102,17 @@ export class DaemonServer {
   }
 
   /**
-   * Atomically claim the session's pid file, or exit.
+   * Claim the session's pid file, or exit.
    *
-   * Concurrent clients may each spawn a daemon for the same session.
-   * The pid is written to a private temp file first and published with
-   * link(), so the pid file atomically appears with its full content
-   * (a create-then-write would let a racer read an empty file, mistake
-   * the winner for stale, and delete its files). Exactly one daemon
-   * wins; losers exit without touching the winner's files.
+   * Concurrent clients may each spawn a daemon for the same session. The pid is
+   * written to a private temp file first and published with link() — atomic, so
+   * the pid file appears with its full content and, in the common case (no prior
+   * daemon), exactly one racer wins. Reclaiming a *stale* pid file left by a
+   * hard-crashed daemon is best-effort here: Node has no flock(), so we fall
+   * back to a liveness check. The Python daemon uses fcntl.flock (which the OS
+   * releases on crash) and is fully race-free; this divergence is unavoidable
+   * without a native locking addon. In practice the client's connect-retry plus
+   * the deep listen backlog keep concurrent respawns rare.
    */
   private claimPid(): void {
     const tmpPath = `${this.pidPath}.${process.pid}`;
@@ -117,25 +120,31 @@ export class DaemonServer {
     // process.exit() does NOT run finally blocks, so remove the temp file
     // explicitly before every exit as well as on the normal return path.
     const rmTmp = () => { try { fs.unlinkSync(tmpPath); } catch {} };
+    const isErrno = (e: unknown, code: string) => (e as NodeJS.ErrnoException)?.code === code;
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           fs.linkSync(tmpPath, this.pidPath);
-          // The session is ours now; clear any leftover socket from a dead daemon.
-          try { fs.unlinkSync(this.socketPath); } catch {}
-          return;
-        } catch {
+        } catch (e) {
+          // Surface real filesystem errors instead of misreading them as
+          // pid-file contention.
+          if (!isErrno(e, "EEXIST")) { rmTmp(); throw e; }
+          let pid: number;
           try {
-            const pid = parseInt(fs.readFileSync(this.pidPath, "utf-8").trim(), 10);
-            process.kill(pid, 0); // Check if alive
-            process.stderr.write(`[camoufox-cli] Daemon already running (pid ${pid})\n`);
-            rmTmp();
-            process.exit(1);
+            pid = parseInt(fs.readFileSync(this.pidPath, "utf-8").trim(), 10);
+            process.kill(pid, 0); // alive?
           } catch {
-            // Stale pid, clean up and retry
+            // Stale/foreign pid — clean up and retry the link.
             try { fs.unlinkSync(this.pidPath); } catch {}
+            continue;
           }
+          process.stderr.write(`[camoufox-cli] Daemon already running (pid ${pid})\n`);
+          rmTmp();
+          process.exit(1);
         }
+        // The session is ours now; clear any leftover socket from a dead daemon.
+        try { fs.unlinkSync(this.socketPath); } catch {}
+        return;
       }
       process.stderr.write(`[camoufox-cli] Could not claim pid file, another daemon is starting\n`);
       rmTmp();
