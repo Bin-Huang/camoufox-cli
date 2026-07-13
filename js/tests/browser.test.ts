@@ -1,10 +1,32 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { BrowserManager } from "../src/browser.js";
 
 describe("BrowserManager", () => {
   it("starts as not running", () => {
     const manager = new BrowserManager();
     expect(manager.isRunning).toBe(false);
+  });
+
+  it("recoverDeadBrowser coalesces concurrent callers into one relaunch", async () => {
+    const manager = new BrowserManager();
+    let closes = 0, launches = 0;
+    vi.spyOn(manager, "close").mockImplementation(async () => {
+      closes++; await new Promise((r) => setTimeout(r, 10));
+    });
+    vi.spyOn(manager, "launch").mockImplementation(async () => {
+      launches++; await new Promise((r) => setTimeout(r, 10));
+    });
+
+    // Five tabs recovering from a dead browser at once must share ONE
+    // close+relaunch, not stomp each other's freshly launched browser.
+    await Promise.all([0, 1, 2, 3, 4].map(() => manager.recoverDeadBrowser(true, "t")));
+    expect(closes).toBe(1);
+    expect(launches).toBe(1);
+
+    // A later, separate recovery runs fresh (the in-flight promise was cleared).
+    await manager.recoverDeadBrowser(true, "t");
+    expect(closes).toBe(2);
+    expect(launches).toBe(2);
   });
 
   it("getPage rejects when not launched", async () => {
