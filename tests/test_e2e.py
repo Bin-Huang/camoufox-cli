@@ -74,6 +74,12 @@ def daemon():
     except Exception:
         pass
     thread.join(timeout=10)
+    # The daemon keeps its .lock file by design (unlinking it would reintroduce
+    # the startup race); remove it here so test runs don't litter /tmp.
+    try:
+        os.unlink(f"/tmp/camoufox-cli-{TEST_SESSION}.lock")
+    except FileNotFoundError:
+        pass
 
 
 def cmd(sock_path: str, action: str, params=None, id: str = "r1", tab: str | None = None) -> dict:
@@ -274,3 +280,7 @@ class TestE2E:
 
         thread.join(timeout=10)
         assert not os.path.exists(sock)
+        try:
+            os.unlink(f"/tmp/camoufox-cli-{session}.lock")
+        except FileNotFoundError:
+            pass
