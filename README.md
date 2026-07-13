@@ -128,12 +128,23 @@ camoufox-cli wait --url "*/dashboard"     # Wait for URL pattern
 ### Tabs
 
 ```bash
-camoufox-cli tabs                         # List open tabs
+camoufox-cli tabs                         # List open tabs (with owner names)
 camoufox-cli switch 2                     # Switch to tab by index
 camoufox-cli close-tab                    # Close current tab
 ```
 
+Named tabs let concurrent agents share one browser — same fingerprint, same cookies/login state — while each keeps its own page, element refs, and history. Tabs share one browser process (commands from different tabs may queue behind a slow one); separate sessions run as independent processes in parallel:
+
+```bash
+camoufox-cli --tab agent1 open https://app.example.com/a
+camoufox-cli --tab agent2 open https://app.example.com/b
+camoufox-cli --tab agent1 snapshot -i     # refs are per tab
+camoufox-cli --tab agent1 close-tab       # free a tab when its agent is done
+```
+
 ### Sessions
+
+Each named session is a separate browser process with its own randomly-generated fingerprint and its own cookies. Use sessions for isolated identities, named tabs (above) for cheap parallelism under one identity. For real multi-account isolation, combine sessions with a per-session proxy (config file) and `--persistent` — see Persistent Identity below:
 
 ```bash
 camoufox-cli sessions                     # List active sessions
@@ -153,6 +164,8 @@ camoufox-cli cookies export file.json     # Export cookies
 
 ```
 --session <name>       Named session (default: "default")
+--tab <name>           Named tab within the session's shared browser: same fingerprint and
+                       cookies/login, independent page/refs/history (default: "default")
 --headed               Show browser window (default: headless)
 --timeout <seconds>    Daemon idle timeout (default: 1800)
 --json                 Output as JSON

@@ -104,7 +104,7 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
     command line are collected here, so they always win over config; see
     ``config.load_defaults``.
     """
-    builtin = {"session": "default", "headed": False, "timeout": 1800, "json": False, "persistent": None, "proxy": None, "geoip": True, "locale": None}
+    builtin = {"session": "default", "tab": "default", "headed": False, "timeout": 1800, "json": False, "persistent": None, "proxy": None, "geoip": True, "locale": None}
     cli: dict = {}
     rest = []
 
@@ -116,6 +116,12 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
                 print("Error: --session requires a value", file=sys.stderr)
                 sys.exit(1)
             cli["session"] = args[i]
+        elif args[i] == "--tab":
+            i += 1
+            if i >= len(args):
+                print("Error: --tab requires a value", file=sys.stderr)
+                sys.exit(1)
+            cli["tab"] = args[i]
         elif args[i] == "--headed":
             cli["headed"] = True
         elif args[i] == "--timeout":
@@ -161,6 +167,8 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
 
     action = rest[0]
     cmd = build_command(action, rest)
+    # Route the command to a named tab within the session's shared browser.
+    cmd["tab"] = flags["tab"]
     return flags, cmd
 
 
@@ -503,6 +511,9 @@ Setup:
 
 Flags:
   --session <name>     Session name (default: "default")
+  --tab <name>         Named tab within the session's shared browser: same
+                       fingerprint and cookies/login, independent page/refs/
+                       history. Give each concurrent agent its own tab name.
   --headed             Show browser window
   --timeout <secs>     Daemon idle timeout (default: 1800)
   --json               Output as JSON

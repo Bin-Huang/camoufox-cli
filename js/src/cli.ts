@@ -96,6 +96,7 @@ export function listSessions(): string[] {
 
 export interface Flags {
   session: string;
+  tab: string;
   headed: boolean;
   timeout: number;
   json: boolean;
@@ -109,7 +110,7 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
   // Flag precedence: command line > config file (per-session block, then the
   // `default` block) > built-in defaults. Only flags explicitly passed on the
   // command line are collected here, so they always win over config.
-  const builtin: Flags = { session: "default", headed: false, timeout: 1800, json: false, persistent: null, proxy: null, geoip: true, locale: null };
+  const builtin: Flags = { session: "default", tab: "default", headed: false, timeout: 1800, json: false, persistent: null, proxy: null, geoip: true, locale: null };
   const cli: Partial<Flags> = {};
   const rest: string[] = [];
 
@@ -118,6 +119,9 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
     switch (argv[i]) {
       case "--session":
         cli.session = argv[++i] ?? (process.stderr.write("Error: --session requires a value\n"), process.exit(1), "");
+        break;
+      case "--tab":
+        cli.tab = argv[++i] ?? (process.stderr.write("Error: --tab requires a value\n"), process.exit(1), "");
         break;
       case "--headed":
         cli.headed = true;
@@ -163,6 +167,8 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
   const flags: Flags = { ...builtin, ...loadDefaults(session), ...cli };
 
   const command = buildCommand(rest[0], rest);
+  // Route the command to a named tab within the session's shared browser.
+  command.tab = flags.tab;
   return { flags, command };
 }
 
@@ -484,6 +490,9 @@ Setup:
 
 Flags:
   --session <name>     Session name (default: "default")
+  --tab <name>         Named tab within the session's shared browser: same
+                       fingerprint and cookies/login, independent page/refs/
+                       history. Give each concurrent agent its own tab name.
   --headed             Show browser window
   --timeout <secs>     Daemon idle timeout (default: 1800)
   --json               Output as JSON

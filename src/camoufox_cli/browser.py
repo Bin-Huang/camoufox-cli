@@ -27,23 +27,44 @@ def _ensure_browser_installed() -> None:
         )
 
 
+class TabState:
+    """Per-tab state: page pointer, element refs, and navigation history.
+
+    Every named tab shares the single browser context (same fingerprint,
+    same cookies/login state) but keeps its own page and view state, so
+    concurrent clients don't clobber each other.
+    """
+
+    def __init__(self):
+        self.page: Page | None = None
+        self.refs = RefRegistry()
+        # Camoufox spoofs history API for anti-fingerprinting,
+        # so we track navigation history ourselves.
+        self.history: list[str] = []
+        self.history_index: int = -1
+
+    def push_history(self, url: str) -> None:
+        # Truncate forward history when navigating to a new page
+        self.history = self.history[:self.history_index + 1]
+        self.history.append(url)
+        # Cap history to avoid unbounded growth in long-lived daemons.
+        if len(self.history) > _MAX_HISTORY:
+            self.history = self.history[-_MAX_HISTORY:]
+        self.history_index = len(self.history) - 1
+
+
 class BrowserManager:
     def __init__(self, persistent: str | None = None, proxy: str | None = None, geoip: bool = True, locale: str | None = None):
         self._camoufox: Camoufox | None = None
         self._context: BrowserContext | None = None
-        self._page: Page | None = None
-        self.refs = RefRegistry()
+        self._tabs: dict[str, TabState] = {}
         self._headless: bool = True
         self._persistent = persistent
         self._proxy = proxy
         self._geoip = geoip
         self._locale = locale
-        # Camoufox spoofs history API for anti-fingerprinting,
-        # so we track navigation history ourselves.
-        self._history: list[str] = []
-        self._history_index: int = -1
 
-    def launch(self, headless: bool = True) -> None:
+    def launch(self, headless: bool = True, tab: str = "default") -> None:
         if self._camoufox is not None:
             return
         self._headless = headless
@@ -92,11 +113,14 @@ class BrowserManager:
             # persistent_context returns BrowserContext directly
             self._context = result
             pages = self._context.pages
-            self._page = pages[0] if pages else self._context.new_page()
+            page = pages[0] if pages else self._context.new_page()
         else:
-            # Normal mode: result is Browser, new_page() creates default context + page
-            self._page = result.new_page()
-            self._context = self._page.context
+            # Normal mode: result is Browser. Create an explicit context so
+            # more tabs can be added later — the implicit context made by
+            # browser.new_page() refuses context.new_page().
+            self._context = result.new_context()
+            page = self._context.new_page()
+        self.state(tab).page = page
 
         # Workaround: Playwright's Firefox (Juggler) fails proxy auth on HTTPS
         # CONNECT tunnels, raising NS_ERROR_PROXY_AUTHENTICATION_FAILED.
@@ -108,76 +132,93 @@ class BrowserManager:
                 {"Proxy-Authorization": f"Basic {token}"}
             )
 
-    def get_page(self) -> Page:
-        if self._page is None:
-            raise RuntimeError("Browser not launched. Send 'open' command first.")
-        return self._page
+    def state(self, tab: str) -> TabState:
+        """Get (lazily creating) the state record for a named tab."""
+        st = self._tabs.get(tab)
+        if st is None:
+            st = TabState()
+            self._tabs[tab] = st
+        return st
+
+    def get_page(self, tab: str = "default") -> Page:
+        """Get the tab's page, lazily creating one in the shared context.
+
+        A new tab gets its own page (same fingerprint and cookies as every
+        other tab); a tab whose page was closed gets a fresh one.
+        """
+        ctx = self.get_context()
+        st = self.state(tab)
+        if st.page is None or st.page.is_closed():
+            st.page = ctx.new_page()
+        return st.page
 
     def get_context(self) -> BrowserContext:
         if self._context is None:
             raise RuntimeError("Browser not launched. Send 'open' command first.")
         return self._context
 
-    def get_tabs(self) -> list[dict]:
+    def get_tabs(self, tab: str = "default") -> list[dict]:
         ctx = self.get_context()
+        current = self._tabs.get(tab)
+        owners: dict[Page, str] = {}
+        for name, st in self._tabs.items():
+            if st.page is not None:
+                owners.setdefault(st.page, name)
         tabs = []
         for i, p in enumerate(ctx.pages):
             tabs.append({
                 "index": i,
                 "url": p.url,
                 "title": p.title(),
-                "active": p is self._page,
+                "active": current is not None and p is current.page,
+                "tab": owners.get(p),
             })
         return tabs
 
-    def switch_to_tab(self, index: int) -> Page:
+    def switch_to_tab(self, tab: str, index: int) -> Page:
         ctx = self.get_context()
         pages = ctx.pages
         if index < 0 or index >= len(pages):
             raise IndexError(f"Tab index {index} out of range (0-{len(pages) - 1})")
-        self._page = pages[index]
-        self._page.bring_to_front()
-        return self._page
+        st = self.state(tab)
+        st.page = pages[index]
+        st.page.bring_to_front()
+        return st.page
 
-    def close_current_tab(self) -> None:
+    def close_current_tab(self, tab: str = "default") -> None:
         ctx = self.get_context()
         pages = ctx.pages
         if len(pages) <= 1:
             raise RuntimeError("Cannot close the last tab. Use 'close' to shut down the browser.")
-        current = self._page
+        st = self._tabs.get(tab)
+        if st is None or st.page is None or st.page.is_closed():
+            raise RuntimeError(f"Tab '{tab}' has no open page.")
+        current = st.page
         # Switch to another tab before closing
         idx = pages.index(current)
         new_idx = idx - 1 if idx > 0 else 1
-        self._page = pages[new_idx]
-        self._page.bring_to_front()
+        st.page = pages[new_idx]
+        st.page.bring_to_front()
         current.close()
 
-    def push_history(self, url: str) -> None:
-        """Record a URL in our navigation history."""
-        # Truncate forward history when navigating to a new page
-        self._history = self._history[:self._history_index + 1]
-        self._history.append(url)
-        # Cap history to avoid unbounded growth in long-lived daemons.
-        if len(self._history) > _MAX_HISTORY:
-            self._history = self._history[-_MAX_HISTORY:]
-        self._history_index = len(self._history) - 1
-
-    def go_back(self) -> str | None:
-        """Go back in history. Returns the URL or None if at start."""
-        if self._history_index <= 0:
+    def go_back(self, tab: str = "default") -> str | None:
+        """Go back in the tab's history. Returns the URL or None if at start."""
+        st = self.state(tab)
+        if st.history_index <= 0:
             return None
-        self._history_index -= 1
-        url = self._history[self._history_index]
-        self.get_page().goto(url, wait_until="domcontentloaded")
+        st.history_index -= 1
+        url = st.history[st.history_index]
+        self.get_page(tab).goto(url, wait_until="domcontentloaded")
         return url
 
-    def go_forward(self) -> str | None:
-        """Go forward in history. Returns the URL or None if at end."""
-        if self._history_index >= len(self._history) - 1:
+    def go_forward(self, tab: str = "default") -> str | None:
+        """Go forward in the tab's history. Returns the URL or None if at end."""
+        st = self.state(tab)
+        if st.history_index >= len(st.history) - 1:
             return None
-        self._history_index += 1
-        url = self._history[self._history_index]
-        self.get_page().goto(url, wait_until="domcontentloaded")
+        st.history_index += 1
+        url = st.history[st.history_index]
+        self.get_page(tab).goto(url, wait_until="domcontentloaded")
         return url
 
     def close(self) -> None:
@@ -188,10 +229,59 @@ class BrowserManager:
                 pass
             self._camoufox = None
             self._context = None
-            self._page = None
-            self._history.clear()
-            self._history_index = -1
+            self._tabs.clear()
 
     @property
     def is_running(self) -> bool:
         return self._camoufox is not None
+
+
+class TabView:
+    """BrowserManager scoped to one named tab.
+
+    Command handlers work against this view, so each client's commands
+    route to its own page/refs/history while sharing the browser context
+    (fingerprint + cookies) with every other tab.
+    """
+
+    def __init__(self, manager: BrowserManager, tab: str):
+        self._manager = manager
+        self.tab = tab
+
+    @property
+    def refs(self) -> RefRegistry:
+        return self._manager.state(self.tab).refs
+
+    @property
+    def is_running(self) -> bool:
+        return self._manager.is_running
+
+    def launch(self, headless: bool = True) -> None:
+        self._manager.launch(headless=headless, tab=self.tab)
+
+    def get_page(self) -> Page:
+        return self._manager.get_page(self.tab)
+
+    def get_context(self) -> BrowserContext:
+        return self._manager.get_context()
+
+    def get_tabs(self) -> list[dict]:
+        return self._manager.get_tabs(self.tab)
+
+    def switch_to_tab(self, index: int) -> Page:
+        return self._manager.switch_to_tab(self.tab, index)
+
+    def close_current_tab(self) -> None:
+        self._manager.close_current_tab(self.tab)
+
+    def push_history(self, url: str) -> None:
+        self._manager.state(self.tab).push_history(url)
+
+    def go_back(self) -> str | None:
+        return self._manager.go_back(self.tab)
+
+    def go_forward(self) -> str | None:
+        return self._manager.go_forward(self.tab)
+
+    def close(self) -> None:
+        self._manager.close()
