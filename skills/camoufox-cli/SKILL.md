@@ -190,7 +190,13 @@ camoufox-cli --tab inbox-scan-x4q close-tab     # Free a tab when its agent is d
 
 **Picking your tab name.** Nothing enforces uniqueness — two agents using the same name share one page pointer and will clobber each other. Follow these rules:
 
-1. Make up your name ONCE at the start of your task: a short slug of *your specific task* plus 2-3 random characters (e.g. `price-scan-k3f`), then reuse it verbatim in every subsequent command. (If your instructions explicitly assign you a tab name, use that instead.)
+1. Generate your name ONCE at the start of your task: a short slug of *your specific task* plus a shell-generated random suffix — don't invent the suffix yourself, LLM-"random" characters are biased and concurrent agents may produce the same ones. Then reuse the printed name verbatim in every subsequent command. (If your instructions explicitly assign you a tab name, use that instead.)
+
+   ```bash
+   TAB="price-scan-$(openssl rand -hex 2)" && echo "$TAB" && camoufox-cli --tab "$TAB" open https://example.com
+   # prints e.g. price-scan-9f3c — use that exact name in every later command:
+   camoufox-cli --tab price-scan-9f3c snapshot -i
+   ```
 2. NEVER pick a generic name like `agent1`, `main`, `work`, or `browser` — every other agent reading this same document would "reasonably" pick the same one. If unsure, run `camoufox-cli tabs` to see which names are already taken.
 
 Use tabs when subagents should act as the same identity (e.g. all operating the same logged-in account). Note `close` still shuts down the whole browser for every tab — a finishing subagent should use `close-tab` instead, and only the coordinator should run `close` at the end.
