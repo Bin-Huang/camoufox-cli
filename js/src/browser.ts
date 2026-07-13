@@ -54,6 +54,7 @@ export class BrowserManager {
   private context: BrowserContext | null = null;
   private tabs = new Map<string, TabState>();
   private launching: Promise<void> | null = null;
+  private recovering: Promise<void> | null = null;
   private persistent: string | null;
   private proxy: string | null;
   private geoip: boolean;
@@ -146,6 +147,23 @@ export class BrowserManager {
         "Proxy-Authorization": `Basic ${token}`,
       });
     }
+  }
+
+  /**
+   * Recover after the shared browser/context has died: close what's left and
+   * relaunch. Concurrent callers coalesce onto ONE close+relaunch — the daemon
+   * handles connections concurrently, so without this two tabs recovering at
+   * once would each close+relaunch and one would tear down the browser the
+   * other just created. (Python needs no equivalent: its daemon is serial.)
+   */
+  async recoverDeadBrowser(headless: boolean, tab: string): Promise<void> {
+    if (!this.recovering) {
+      this.recovering = (async () => {
+        await this.close();
+        await this.launch(headless, tab);
+      })().finally(() => { this.recovering = null; });
+    }
+    await this.recovering;
   }
 
   /** Get (lazily creating) the state record for a named tab. */
@@ -297,6 +315,10 @@ export class TabView {
 
   launch(headless: boolean = true): Promise<void> {
     return this.manager.launch(headless, this.tab);
+  }
+
+  recoverDeadBrowser(headless: boolean = true): Promise<void> {
+    return this.manager.recoverDeadBrowser(headless, this.tab);
   }
 
   getPage(create: boolean = false): Promise<Page> {

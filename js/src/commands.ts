@@ -42,8 +42,9 @@ const cmdOpen: Handler = async (manager, cmdId, params) => {
       await page.goto(url, { waitUntil: "domcontentloaded" });
     } catch (e2: any) {
       if (!String(e2).includes("has been closed")) throw e2;
-      await manager.close();
-      await manager.launch(params.headless as boolean ?? true);
+      // The whole browser/context is gone. Recover via the coalesced path so
+      // two tabs relaunching at once don't tear down each other's new browser.
+      await manager.recoverDeadBrowser(params.headless as boolean ?? true);
       const page = (await manager.getPage(true));
       await page.goto(url, { waitUntil: "domcontentloaded" });
     }

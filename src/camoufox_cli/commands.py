@@ -76,6 +76,9 @@ def _cmd_open(manager: TabView, cmd_id: str, params: dict) -> dict:
         except Exception as e2:
             if "has been closed" not in str(e2):
                 raise
+            # The whole browser/context is gone. A plain close+relaunch is safe
+            # here because this daemon is single-threaded; the JS daemon handles
+            # connections concurrently and coalesces this via recoverDeadBrowser.
             manager.close()
             manager.launch(headless=params.get("headless", True))
             page = manager.get_page(create=True)

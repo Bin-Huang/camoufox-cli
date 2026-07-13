@@ -137,6 +137,12 @@ class DaemonServer:
         race over. This sidesteps the TOCTOU that any pid-file read-then-unlink
         scheme has. The pid file is written (while holding the lock) purely for
         diagnostics / the "already running" message.
+
+        Caveat: the two implementations use different mutexes (this flock vs the
+        JS daemon's pid-file link), so running the Python and JavaScript daemons
+        for the *same* session name concurrently is unsupported — pick one
+        implementation per machine (they install the same `camoufox-cli`
+        command, so normally only one is on PATH anyway).
         """
         fd = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, 0o644)
         try:
