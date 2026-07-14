@@ -102,9 +102,10 @@ camoufox-cli wait 2000               # Wait milliseconds
 camoufox-cli wait --url "*/dashboard" # Wait for URL pattern
 
 # Tabs
-camoufox-cli tabs                    # List open tabs
+camoufox-cli tabs                    # List open tabs (with owner names)
 camoufox-cli switch 2                # Switch to tab by index
 camoufox-cli close-tab               # Close current tab
+camoufox-cli --tab <unique-name> open <url> # Named tab: shared browser + login, own page/refs
 
 # Cookies & State
 camoufox-cli cookies                 # Dump cookies as JSON
@@ -175,7 +176,33 @@ camoufox-cli switch 1                # Switch to second tab
 camoufox-cli snapshot -i
 ```
 
-### Parallel Sessions
+### Parallel Tabs (shared identity, one browser)
+
+Named tabs share one browser within a session — same fingerprint, same cookies/login state — but each tab keeps its own page, element refs, and navigation history, so concurrent agents never clobber each other. This is the cheap way to parallelize: one Firefox total, roughly 50-150MB per extra tab.
+
+```bash
+camoufox-cli --tab inbox-scan-x4q open https://app.example.com/inbox
+camoufox-cli --tab report-pull-9kf open https://app.example.com/reports
+camoufox-cli --tab inbox-scan-x4q snapshot -i   # refs are per tab
+camoufox-cli tabs                               # Lists every tab with its owner name
+camoufox-cli --tab inbox-scan-x4q close-tab     # Free a tab when its agent is done
+```
+
+**Picking your tab name.** Nothing enforces uniqueness — two agents using the same name share one page pointer and will clobber each other. Generate your name ONCE at the start of your task: a short slug of *your specific task* plus a shell-generated random suffix — don't invent the suffix yourself, LLM-"random" characters are biased and concurrent agents may produce the same ones. Then reuse the printed name verbatim in every subsequent command. (If your instructions explicitly assign you a tab name, use that instead.)
+
+```bash
+TAB="price-scan-$(openssl rand -hex 2)" && echo "$TAB" && camoufox-cli --tab "$TAB" open https://example.com
+# prints e.g. price-scan-9f3c — use that exact name in every later command:
+camoufox-cli --tab price-scan-9f3c snapshot -i
+```
+
+Use tabs when subagents should act as the same identity (e.g. all operating the same logged-in account). Note `close` still shuts down the whole browser for every tab — a finishing subagent should use `close-tab` instead, and only the coordinator should run `close` at the end.
+
+Tabs share one browser process, so commands from different tabs may queue behind a slow navigation or `wait`; separate sessions run as independent processes and execute fully in parallel. If a few agents are extremely command-heavy, consider giving those their own session and keeping the rest on tabs.
+
+### Parallel Sessions (isolated identities)
+
+Each named session is a separate browser process, so each gets its own randomly-generated fingerprint and its own cookies. Use this when agents must NOT share identity (multi-account work) — it costs a full Firefox (~300-500MB) per session:
 
 ```bash
 camoufox-cli --session s1 open https://site-a.com
@@ -184,6 +211,8 @@ camoufox-cli sessions                # List both
 camoufox-cli --session s1 snapshot -i
 camoufox-cli --session s2 snapshot -i
 ```
+
+Separate sessions alone only isolate the browser side. For multi-account work that must survive scrutiny, also give each session its own proxy (sites correlate accounts by IP — use the config file's `sessions.<name>.proxy`) and `--persistent` (otherwise the fingerprint is re-randomized every launch, which looks like a new device on each login).
 
 ### Visual Browser (Debugging)
 
@@ -195,21 +224,35 @@ camoufox-cli screenshot debug.png
 
 ## Session Management and Cleanup
 
-When running multiple agents or automations concurrently, always use named sessions to avoid conflicts:
+When running multiple agents or automations concurrently, give each agent its own name so they don't conflict. Two isolation levels:
+
+- **`--tab <name>`** (shared identity, recommended default): all agents share one browser — same fingerprint and login state — but each gets an independent tab. Cheap: one Firefox total.
+- **`--session <name>`** (isolated identity): each agent gets its own browser with its own fingerprint and cookies. Expensive: a full Firefox per session. Use only when identities must be separate.
 
 ```bash
-camoufox-cli --session agent1 open https://site-a.com
-camoufox-cli --session agent2 open https://site-b.com
+# Shared identity: 3 agents, one browser, one login
+camoufox-cli --tab orders-audit-p2m open https://app.example.com/a
+camoufox-cli --tab user-export-j8w open https://app.example.com/b
+camoufox-cli --tab billing-check-r4t open https://app.example.com/c
+
+# Isolated identities: 2 agents, two browsers
+camoufox-cli --session shop-a-buyer open https://site-a.com
+camoufox-cli --session shop-b-buyer open https://site-b.com
 camoufox-cli sessions                  # Check active sessions
 ```
+
+Names are just strings and nothing enforces uniqueness — follow the "Picking your tab name" rule above (task slug + shell-generated random suffix, chosen once). The same applies to session names.
 
 Always close your browser session when done to avoid leaked processes:
 
 ```bash
-camoufox-cli close                     # Close default session
-camoufox-cli --session agent1 close    # Close specific session
-camoufox-cli close --all               # Close all sessions
+camoufox-cli --tab orders-audit-p2m close-tab   # Free one tab (browser keeps running)
+camoufox-cli close                              # Close default session (all its tabs)
+camoufox-cli --session shop-a-buyer close       # Close specific session
+camoufox-cli close --all                        # Close all sessions
 ```
+
+Note `close` shuts down the whole session's browser for every tab in it — finishing subagents should use `close-tab`; the coordinator runs `close` at the end.
 
 If a previous session was not closed properly, the daemon may still be running. Use `camoufox-cli close` to clean it up before starting new work.
 
@@ -312,6 +355,9 @@ camoufox-cli snapshot -i
 
 ```
 --session <name>       Named session (default: "default")
+--tab <name>           Named tab within the session's shared browser: same
+                       fingerprint and cookies/login, independent page/refs/
+                       history (default: "default")
 --headed               Show browser window (default: headless)
 --timeout <seconds>    Daemon idle timeout (default: 1800)
 --json                 Output as JSON instead of human-readable

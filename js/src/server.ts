@@ -16,6 +16,7 @@ export class DaemonServer {
   private server: net.Server | null = null;
   private lastActivity = Date.now();
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private bound = false;
 
   constructor(opts: { session?: string; headless?: boolean; timeout?: number; persistent?: string | null; proxy?: string | null; geoip?: boolean; locale?: string | null }) {
     this.session = opts.session ?? "default";
@@ -27,8 +28,7 @@ export class DaemonServer {
   }
 
   async start(): Promise<void> {
-    this.cleanupStale();
-    this.writePid();
+    this.claimPid();
     // Idle timeout watchdog
     this.watchdogTimer = setInterval(() => {
       if (Date.now() - this.lastActivity > this.timeout * 1000) {
@@ -43,19 +43,22 @@ export class DaemonServer {
 
     this.server = net.createServer({ allowHalfOpen: true }, (conn) => this.handleConnection(conn));
 
-    await new Promise<void>((resolve, reject) => {
-      this.server!.listen(this.socketPath, () => resolve());
-      this.server!.on("error", reject);
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        this.server!.listen(this.socketPath, () => resolve());
+        this.server!.on("error", reject);
+      });
+      this.bound = true;
 
-    process.stderr.write(`[camoufox-cli] Daemon listening session=${this.session}\n`);
+      process.stderr.write(`[camoufox-cli] Daemon listening session=${this.session}\n`);
 
-    // Wait until server closes
-    await new Promise<void>((resolve) => {
-      this.server!.on("close", resolve);
-    });
-
-    await this.shutdown();
+      // Wait until server closes
+      await new Promise<void>((resolve) => {
+        this.server!.on("close", resolve);
+      });
+    } finally {
+      await this.shutdown();
+    }
   }
 
   private handleConnection(conn: net.Socket): void {
@@ -98,24 +101,57 @@ export class DaemonServer {
     conn.on("end", () => { processData(); });
   }
 
-  private cleanupStale(): void {
-    if (fs.existsSync(this.socketPath)) {
-      if (fs.existsSync(this.pidPath)) {
+  /**
+   * Claim the session's pid file, or exit.
+   *
+   * Concurrent clients may each spawn a daemon for the same session. The pid is
+   * written to a private temp file first and published with link() — atomic, so
+   * the pid file appears with its full content and, in the common case (no prior
+   * daemon), exactly one racer wins. Reclaiming a *stale* pid file left by a
+   * hard-crashed daemon is best-effort here: Node has no flock(), so we fall
+   * back to a liveness check. The Python daemon uses fcntl.flock (which the OS
+   * releases on crash) and is fully race-free; this divergence is unavoidable
+   * without a native locking addon. In practice the client's connect-retry plus
+   * the deep listen backlog keep concurrent respawns rare.
+   */
+  private claimPid(): void {
+    const tmpPath = `${this.pidPath}.${process.pid}`;
+    fs.writeFileSync(tmpPath, String(process.pid));
+    // process.exit() does NOT run finally blocks, so remove the temp file
+    // explicitly before every exit as well as on the normal return path.
+    const rmTmp = () => { try { fs.unlinkSync(tmpPath); } catch {} };
+    const isErrno = (e: unknown, code: string) => (e as NodeJS.ErrnoException)?.code === code;
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const pid = parseInt(fs.readFileSync(this.pidPath, "utf-8").trim(), 10);
-          process.kill(pid, 0); // Check if alive
+          fs.linkSync(tmpPath, this.pidPath);
+        } catch (e) {
+          // Surface real filesystem errors instead of misreading them as
+          // pid-file contention.
+          if (!isErrno(e, "EEXIST")) { rmTmp(); throw e; }
+          let pid: number;
+          try {
+            pid = parseInt(fs.readFileSync(this.pidPath, "utf-8").trim(), 10);
+            process.kill(pid, 0); // alive?
+          } catch {
+            // Stale/foreign pid — clean up and retry the link.
+            try { fs.unlinkSync(this.pidPath); } catch {}
+            continue;
+          }
           process.stderr.write(`[camoufox-cli] Daemon already running (pid ${pid})\n`);
+          rmTmp();
           process.exit(1);
-        } catch {
-          // Stale pid, clean up
         }
+        // The session is ours now; clear any leftover socket from a dead daemon.
+        try { fs.unlinkSync(this.socketPath); } catch {}
+        return;
       }
-      fs.unlinkSync(this.socketPath);
+      process.stderr.write(`[camoufox-cli] Could not claim pid file, another daemon is starting\n`);
+      rmTmp();
+      process.exit(1);
+    } finally {
+      rmTmp();
     }
-  }
-
-  private writePid(): void {
-    fs.writeFileSync(this.pidPath, String(process.pid));
   }
 
   private async shutdown(): Promise<void> {
@@ -124,8 +160,15 @@ export class DaemonServer {
     if (this.server) {
       try { this.server.close(); } catch {}
     }
-    for (const p of [this.socketPath, this.pidPath]) {
-      try { fs.unlinkSync(p); } catch {}
+    // Remove only the files this daemon owns, so a losing daemon
+    // (bind failure, race) never deletes the live daemon's socket/pid.
+    if (this.bound) {
+      try { fs.unlinkSync(this.socketPath); } catch {}
     }
+    try {
+      if (fs.readFileSync(this.pidPath, "utf-8").trim() === String(process.pid)) {
+        fs.unlinkSync(this.pidPath);
+      }
+    } catch {}
   }
 }

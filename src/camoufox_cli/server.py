@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import os
 import signal
 import socket
@@ -21,14 +22,16 @@ class DaemonServer:
         self.timeout = timeout  # idle timeout in seconds
         self.socket_path = f"/tmp/camoufox-cli-{session}.sock"
         self.pid_path = f"/tmp/camoufox-cli-{session}.pid"
+        self.lock_path = f"/tmp/camoufox-cli-{session}.lock"
         self.manager = BrowserManager(persistent=persistent, proxy=proxy, geoip=geoip, locale=locale)
         self._server_socket: socket.socket | None = None
+        self._lock_fd: int | None = None
         self._last_activity = time.time()
         self._running = False
+        self._bound = False
 
     def start(self) -> None:
-        self._cleanup_stale()
-        self._write_pid()
+        self._claim_pid()
         self._running = True
 
         # Start idle timeout watchdog
@@ -42,7 +45,14 @@ class DaemonServer:
         self._server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             self._server_socket.bind(self.socket_path)
-            self._server_socket.listen(5)
+            self._bound = True
+            # A large backlog matters under the --tab model: many agents connect
+            # concurrently while this single-threaded daemon handles one command
+            # at a time. With a small backlog the kernel refuses the overflow
+            # connects, and the client mistakes that for a dead daemon and
+            # deletes the live socket. A deep backlog lets connects queue (the
+            # kernel accepts them) instead of being refused.
+            self._server_socket.listen(socket.SOMAXCONN)
             self._server_socket.settimeout(1.0)  # allow periodic checks
 
             while self._running:
@@ -117,29 +127,61 @@ class DaemonServer:
                 pass
         self._cleanup_files()
 
-    def _cleanup_stale(self) -> None:
-        """Remove stale socket file if no daemon is running."""
-        if os.path.exists(self.socket_path):
-            # Check if another daemon is using it
-            if os.path.exists(self.pid_path):
-                try:
-                    with open(self.pid_path) as f:
-                        pid = int(f.read().strip())
-                    os.kill(pid, 0)
-                    # Process exists — abort
-                    print(f"[camoufox-cli] Daemon already running (pid {pid})", file=sys.stderr)
-                    sys.exit(1)
-                except (ProcessLookupError, PermissionError, ValueError):
-                    pass  # stale pid or other user's process, clean up
-            os.unlink(self.socket_path)
+    def _claim_pid(self) -> None:
+        """Claim the session via an exclusive advisory lock, or exit.
 
-    def _write_pid(self) -> None:
+        Concurrent clients may each spawn a daemon for the same session. An
+        ``flock`` on a per-session lock file is the mutex: exactly one daemon
+        acquires it, and — crucially — the OS releases it automatically when the
+        holder dies, so a hard-crashed (SIGKILL) daemon leaves no stale lock to
+        race over. This sidesteps the TOCTOU that any pid-file read-then-unlink
+        scheme has. The pid file is written (while holding the lock) purely for
+        diagnostics / the "already running" message.
+
+        Caveat: the two implementations use different mutexes (this flock vs the
+        JS daemon's pid-file link), so running the Python and JavaScript daemons
+        for the *same* session name concurrently is unsupported — pick one
+        implementation per machine (they install the same `camoufox-cli`
+        command, so normally only one is on PATH anyway).
+        """
+        fd = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            # Another live daemon holds the lock.
+            try:
+                with open(self.pid_path) as f:
+                    pid = f.read().strip()
+            except OSError:
+                pid = "?"
+            os.close(fd)
+            print(f"[camoufox-cli] Daemon already running (pid {pid})", file=sys.stderr)
+            sys.exit(1)
+        # We hold the lock for the daemon's lifetime (released on close/exit).
+        self._lock_fd = fd
         with open(self.pid_path, "w") as f:
             f.write(str(os.getpid()))
+        # Clear any leftover socket from a dead daemon; we alone hold the lock.
+        try:
+            os.unlink(self.socket_path)
+        except FileNotFoundError:
+            pass
 
     def _cleanup_files(self) -> None:
-        for path in (self.socket_path, self.pid_path):
+        """Release the lock and remove the files this daemon owns. Holding the
+        lock guarantees no other daemon owns the session, so this is safe."""
+        if self._bound:
             try:
-                os.unlink(path)
+                os.unlink(self.socket_path)
             except FileNotFoundError:
                 pass
+        if self._lock_fd is not None:
+            try:
+                os.unlink(self.pid_path)
+            except FileNotFoundError:
+                pass
+            try:
+                os.close(self._lock_fd)  # releases the flock
+            except OSError:
+                pass
+            self._lock_fd = None
