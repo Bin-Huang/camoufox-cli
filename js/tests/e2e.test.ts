@@ -34,8 +34,10 @@ function sendCommand(sockPath: string, cmd: Record<string, unknown>): Promise<Re
   });
 }
 
-function cmd(sockPath: string, action: string, params: Record<string, unknown> = {}, id = "r1") {
-  return sendCommand(sockPath, { id, action, params });
+function cmd(sockPath: string, action: string, params: Record<string, unknown> = {}, id = "r1", tab?: string) {
+  const command: Record<string, unknown> = { id, action, params };
+  if (tab !== undefined) command.tab = tab;
+  return sendCommand(sockPath, command);
 }
 
 async function waitForSocket(sockPath: string, timeoutMs = 10000) {
@@ -196,6 +198,65 @@ describe("e2e", { timeout: 120_000 }, () => {
     const resp = await cmd(SOCK_PATH, "cookies", { op: "list" });
     expect(resp.success).toBe(true);
     expect(resp.data).toHaveProperty("cookies");
+  });
+
+  it("named tab gets its own page in the shared context", async () => {
+    await cmd(SOCK_PATH, "open", { url: FIXTURE_URL }); // default tab on fixture
+    const openResp = await cmd(SOCK_PATH, "open", { url: "data:text/html,<title>TabA</title><h1>A</h1>" }, "r1", "a");
+    expect(openResp.success).toBe(true);
+
+    // default tab's page is untouched
+    const defaultUrl = await cmd(SOCK_PATH, "url");
+    expect(defaultUrl.data.url).toContain("fixture.html");
+    const tabAUrl = await cmd(SOCK_PATH, "url", {}, "r1", "a");
+    expect(tabAUrl.data.url).toMatch(/^data:/);
+
+    // both pages live in the same shared context (same fingerprint/cookies)
+    const tabsResp = await cmd(SOCK_PATH, "tabs");
+    const owners = tabsResp.data.tabs.map((t: any) => t.tab);
+    expect(owners).toContain("default");
+    expect(owners).toContain("a");
+  });
+
+  it("refs are per tab", async () => {
+    await cmd(SOCK_PATH, "open", { url: FIXTURE_URL });
+    const snap = await cmd(SOCK_PATH, "snapshot");
+    const ref = findRef(snap.data.snapshot, "textbox");
+
+    // Snapshotting another tab must not clobber the default tab's refs
+    await cmd(SOCK_PATH, "open", { url: "data:text/html,<button>Only</button>" }, "r1", "a");
+    await cmd(SOCK_PATH, "snapshot", {}, "r1", "a");
+
+    const fillResp = await cmd(SOCK_PATH, "fill", { ref, text: "still-works" });
+    expect(fillResp.success).toBe(true);
+  });
+
+  it("history is per tab", async () => {
+    await cmd(SOCK_PATH, "open", { url: "data:text/html,<h1>B1</h1>" }, "r1", "b");
+    // tab "b" has a single history entry, so back must fail there
+    const backResp = await cmd(SOCK_PATH, "back", {}, "r1", "b");
+    expect(backResp.success).toBe(false);
+  });
+
+  it("close-tab works for a named tab", async () => {
+    await cmd(SOCK_PATH, "open", { url: "data:text/html,<h1>C</h1>" }, "r1", "c");
+    const resp = await cmd(SOCK_PATH, "close-tab", {}, "r1", "c");
+    expect(resp.success).toBe(true);
+  });
+
+  it("close-tab does not hijack another tab", async () => {
+    await cmd(SOCK_PATH, "open", { url: "data:text/html,<title>KEEP</title>" }, "r1", "keep");
+    await cmd(SOCK_PATH, "open", { url: "data:text/html,<title>GOING</title>" }, "r1", "going");
+    expect((await cmd(SOCK_PATH, "close-tab", {}, "r1", "going")).success).toBe(true);
+    // The other agent must still be on its OWN page, not a hijacked one.
+    const resp = await cmd(SOCK_PATH, "title", {}, "r1", "keep");
+    expect(resp.data.title).toBe("KEEP");
+  });
+
+  it("a command on a page-less tab errors instead of returning a blank page", async () => {
+    const resp = await cmd(SOCK_PATH, "title", {}, "r1", "never-opened-xyz");
+    expect(resp.success).toBe(false);
+    expect(resp.error).toContain("no open page");
   });
 });
 

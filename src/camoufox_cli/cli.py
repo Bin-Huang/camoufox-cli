@@ -68,19 +68,26 @@ def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | Non
 def ensure_daemon(session: str, headed: bool, timeout: int, persistent: str | None, proxy: str | None = None, geoip: bool = True, locale: str | None = None) -> None:
     sock_path = get_socket_path(session)
     if os.path.exists(sock_path):
-        # Verify daemon is actually alive by trying to connect
-        try:
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            s.settimeout(2)
-            s.connect(sock_path)
-            s.close()
-            return
-        except (ConnectionRefusedError, OSError):
-            # Stale socket from a dead daemon — clean up
+        # Verify the daemon is actually alive. Retry a few times before giving
+        # up: a momentarily busy daemon (accept backlog full while it handles a
+        # slow command) can transiently refuse a connect, and we must not delete
+        # a live daemon's socket and respawn — the respawn would lose the pid
+        # claim and exit, leaving the session unreachable.
+        for attempt in range(3):
             try:
-                os.unlink(sock_path)
-            except FileNotFoundError:
-                pass
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                s.settimeout(2)
+                s.connect(sock_path)
+                s.close()
+                return
+            except (ConnectionRefusedError, OSError):
+                if attempt < 2:
+                    time.sleep(0.2 * (attempt + 1))
+        # Consistently unreachable — treat as a stale socket from a dead daemon.
+        try:
+            os.unlink(sock_path)
+        except FileNotFoundError:
+            pass
     spawn_daemon(session, headed, timeout, persistent, proxy, geoip, locale)
 
 
@@ -104,7 +111,7 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
     command line are collected here, so they always win over config; see
     ``config.load_defaults``.
     """
-    builtin = {"session": "default", "headed": False, "timeout": 1800, "json": False, "persistent": None, "proxy": None, "geoip": True, "locale": None}
+    builtin = {"session": "default", "tab": "default", "headed": False, "timeout": 1800, "json": False, "persistent": None, "proxy": None, "geoip": True, "locale": None}
     cli: dict = {}
     rest = []
 
@@ -116,6 +123,12 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
                 print("Error: --session requires a value", file=sys.stderr)
                 sys.exit(1)
             cli["session"] = args[i]
+        elif args[i] == "--tab":
+            i += 1
+            if i >= len(args):
+                print("Error: --tab requires a value", file=sys.stderr)
+                sys.exit(1)
+            cli["tab"] = args[i]
         elif args[i] == "--headed":
             cli["headed"] = True
         elif args[i] == "--timeout":
@@ -161,6 +174,8 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
 
     action = rest[0]
     cmd = build_command(action, rest)
+    # Route the command to a named tab within the session's shared browser.
+    cmd["tab"] = flags["tab"]
     return flags, cmd
 
 
@@ -503,6 +518,9 @@ Setup:
 
 Flags:
   --session <name>     Session name (default: "default")
+  --tab <name>         Named tab within the session's shared browser: same
+                       fingerprint and cookies/login, independent page/refs/
+                       history. Give each concurrent agent its own tab name.
   --headed             Show browser window
   --timeout <secs>     Daemon idle timeout (default: 1800)
   --json               Output as JSON

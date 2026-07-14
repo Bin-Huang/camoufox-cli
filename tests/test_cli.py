@@ -212,6 +212,20 @@ class TestParseArgs:
         flags, cmd = parse_args(["--session", "mysession", "open", "https://example.com"])
         assert flags["session"] == "mysession"
 
+    def test_tab_default(self):
+        flags, cmd = parse_args(["open", "https://example.com"])
+        assert flags["tab"] == "default"
+        assert cmd["tab"] == "default"
+
+    def test_tab_flag(self):
+        flags, cmd = parse_args(["--tab", "agent1", "open", "https://example.com"])
+        assert flags["tab"] == "agent1"
+        assert cmd["tab"] == "agent1"
+
+    def test_missing_tab_value(self):
+        with pytest.raises(SystemExit):
+            parse_args(["--tab"])
+
     def test_headed_flag(self):
         flags, cmd = parse_args(["--headed", "open", "https://example.com"])
         assert flags["headed"] is True

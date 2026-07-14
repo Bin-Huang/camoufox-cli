@@ -293,6 +293,22 @@ describe("parseArgs", () => {
   it("--proxy missing value exits", () => {
     expect(() => parseArgs(["--proxy"])).toThrow("process.exit");
   });
+
+  it("tab defaults to \"default\" and is stamped on the command", () => {
+    const { flags, command } = parseArgs(["open", "https://example.com"]);
+    expect(flags.tab).toBe("default");
+    expect(command.tab).toBe("default");
+  });
+
+  it("--tab flag routes the command", () => {
+    const { flags, command } = parseArgs(["--tab", "agent1", "open", "https://example.com"]);
+    expect(flags.tab).toBe("agent1");
+    expect(command.tab).toBe("agent1");
+  });
+
+  it("--tab missing value exits", () => {
+    expect(() => parseArgs(["--tab"])).toThrow("process.exit");
+  });
 });
 
 describe("getSocketPath", () => {
