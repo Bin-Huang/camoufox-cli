@@ -72,7 +72,7 @@ camoufox-cli forward                      # Go forward
 camoufox-cli reload                       # Reload page
 camoufox-cli url                          # Print current URL
 camoufox-cli title                        # Print page title
-camoufox-cli close                        # Close browser and stop daemon
+camoufox-cli close                        # Close your tab (browser exits when the last tab closes)
 ```
 
 ### Snapshot
@@ -130,7 +130,6 @@ camoufox-cli wait --url "*/dashboard"     # Wait for URL pattern
 ```bash
 camoufox-cli tabs                         # List open tabs (with owner names)
 camoufox-cli switch 2                     # Switch to tab by index
-camoufox-cli close-tab                    # Close current tab
 ```
 
 Named tabs let concurrent agents share one browser — same fingerprint, same cookies/login state — while each keeps its own page, element refs, and history. Tabs share one browser process (commands from different tabs may queue behind a slow one); separate sessions run as independent processes in parallel:
@@ -139,7 +138,7 @@ Named tabs let concurrent agents share one browser — same fingerprint, same co
 camoufox-cli --tab inbox-scan-x4q open https://app.example.com/a
 camoufox-cli --tab report-pull-9kf open https://app.example.com/b
 camoufox-cli --tab inbox-scan-x4q snapshot -i   # refs are per tab
-camoufox-cli --tab inbox-scan-x4q close-tab     # free a tab when its agent is done
+camoufox-cli --tab inbox-scan-x4q close         # frees only this tab; browser exits when the last tab closes
 ```
 
 Tab names must be unique per agent (nothing enforces this): use a task slug plus a short shell-generated random suffix (e.g. `price-scan-$(openssl rand -hex 2)`), chosen once and reused.
@@ -151,7 +150,7 @@ Each named session is a separate browser process with its own randomly-generated
 ```bash
 camoufox-cli sessions                     # List active sessions
 camoufox-cli --session work open <url>    # Use named session
-camoufox-cli close --all                  # Close all sessions
+camoufox-cli close --all                  # Force-close all sessions
 ```
 
 ### Cookies

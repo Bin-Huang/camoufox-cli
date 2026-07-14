@@ -204,18 +204,29 @@ class BrowserManager:
         st.page.bring_to_front()
         return st.page
 
-    def close_current_tab(self, tab: str = "default") -> None:
-        ctx = self.get_context()
-        st = self._tabs.get(tab)
-        if st is None or st.page is None or st.page.is_closed():
-            raise RuntimeError(f"Tab '{tab}' has no open page.")
-        if len(ctx.pages) <= 1:
-            raise RuntimeError("Cannot close the last tab. Use 'close' to shut down the browser.")
-        # Close only this tab's own page and forget the tab. Don't repoint to a
-        # neighbor page — under the shared-browser model that page belongs to
-        # another agent, so repointing would silently hijack it.
-        st.page.close()
-        del self._tabs[tab]
+    def release_tab(self, tab: str) -> None:
+        """Close the named tab; last one out shuts down the whole browser.
+
+        This is the 'close' command. Every caller — solo or one of many
+        concurrent agents — runs the same thing without knowing about the
+        others: it closes only the caller's own page (never a neighbor's,
+        which would hijack another agent's tab), and when no live tab
+        remains the browser itself is closed. Idempotent: releasing a tab
+        that has no open page is a no-op, not an error.
+        """
+        st = self._tabs.pop(tab, None)
+        if st is not None and st.page is not None and not st.page.is_closed():
+            try:
+                st.page.close()
+            except Exception:
+                pass
+        # Tabs (not context pages) are the refcount: pages nobody owns —
+        # window.open popups, pages of misrouted tab names — must not keep
+        # the browser alive after the last real tab leaves.
+        for other in self._tabs.values():
+            if other.page is not None and not other.page.is_closed():
+                return
+        self.close()
 
     def go_back(self, tab: str = "default") -> str | None:
         """Go back in the tab's history. Returns the URL or None if at start."""
@@ -287,9 +298,6 @@ class TabView:
     def switch_to_tab(self, index: int) -> Page:
         return self._manager.switch_to_tab(self.tab, index)
 
-    def close_current_tab(self) -> None:
-        self._manager.close_current_tab(self.tab)
-
     def push_history(self, url: str) -> None:
         self._manager.state(self.tab).push_history(url)
 
@@ -299,5 +307,10 @@ class TabView:
     def go_forward(self) -> str | None:
         return self._manager.go_forward(self.tab)
 
-    def close(self) -> None:
+    def release(self) -> None:
+        """Close this tab; the browser shuts down when the last tab leaves."""
+        self._manager.release_tab(self.tab)
+
+    def shutdown(self) -> None:
+        """Force-close the whole browser regardless of other tabs (close --all)."""
         self._manager.close()

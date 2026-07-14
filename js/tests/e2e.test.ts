@@ -78,8 +78,10 @@ describe("e2e", { timeout: 120_000 }, () => {
   });
 
   afterAll(async () => {
+    // Tests leave named tabs open, so a plain close would only release the
+    // default tab and keep the daemon alive; force it.
     try {
-      await cmd(SOCK_PATH, "close");
+      await cmd(SOCK_PATH, "close", { force: true });
     } catch {}
     await serverPromise;
   });
@@ -238,19 +240,29 @@ describe("e2e", { timeout: 120_000 }, () => {
     expect(backResp.success).toBe(false);
   });
 
-  it("close-tab works for a named tab", async () => {
+  it("close releases a named tab and keeps the browser", async () => {
     await cmd(SOCK_PATH, "open", { url: "data:text/html,<h1>C</h1>" }, "r1", "c");
-    const resp = await cmd(SOCK_PATH, "close-tab", {}, "r1", "c");
+    const resp = await cmd(SOCK_PATH, "close", {}, "r1", "c");
     expect(resp.success).toBe(true);
+    // Other tabs (the default one) keep the browser and daemon alive.
+    expect((await cmd(SOCK_PATH, "url")).success).toBe(true);
   });
 
-  it("close-tab does not hijack another tab", async () => {
+  it("close does not hijack another tab", async () => {
     await cmd(SOCK_PATH, "open", { url: "data:text/html,<title>KEEP</title>" }, "r1", "keep");
     await cmd(SOCK_PATH, "open", { url: "data:text/html,<title>GOING</title>" }, "r1", "going");
-    expect((await cmd(SOCK_PATH, "close-tab", {}, "r1", "going")).success).toBe(true);
+    expect((await cmd(SOCK_PATH, "close", {}, "r1", "going")).success).toBe(true);
     // The other agent must still be on its OWN page, not a hijacked one.
     const resp = await cmd(SOCK_PATH, "title", {}, "r1", "keep");
     expect(resp.data.title).toBe("KEEP");
+  });
+
+  it("close is idempotent on a page-less tab", async () => {
+    // A close from a tab that never opened a page succeeds as a no-op and
+    // must not shut down the browser other tabs are using.
+    const resp = await cmd(SOCK_PATH, "close", {}, "r1", "never-opened-close");
+    expect(resp.success).toBe(true);
+    expect((await cmd(SOCK_PATH, "url")).success).toBe(true);
   });
 
   it("a command on a page-less tab errors instead of returning a blank page", async () => {
@@ -260,14 +272,19 @@ describe("e2e", { timeout: 120_000 }, () => {
   });
 });
 
-describe("e2e close shuts down daemon", { timeout: 30_000 }, () => {
-  it("close command stops daemon", async () => {
+describe("e2e close shuts down daemon", { timeout: 120_000 }, () => {
+  it("closing the last tab stops the daemon", async () => {
     const session = `e2e-close-${process.pid}-${Date.now()}`;
     const sockPath = `/tmp/camoufox-cli-${session}.sock`;
     const server = new DaemonServer({ session, headless: true, timeout: 60 });
     const promise = server.start();
     await waitForSocket(sockPath);
 
+    const openResp = await sendCommand(sockPath, { id: "r0", action: "open", params: { url: FIXTURE_URL } });
+    expect(openResp.success).toBe(true);
+
+    // The default tab is the only live tab, so this close takes the
+    // browser — and with it the daemon — down.
     const resp = await sendCommand(sockPath, { id: "r1", action: "close", params: {} });
     expect(resp.success).toBe(true);
 

@@ -92,7 +92,11 @@ export class DaemonServer {
         const response = await execute(this.manager, command as any);
         conn.end(serializeResponse(response));
 
-        if (command.action === "close") {
+        // A close releases the caller's tab; the daemon exits only when that
+        // was the last tab (the manager shut the browser down). Other agents'
+        // tabs keep the daemon alive, so a non-final close just responds and
+        // its connection cleans up on the normal path.
+        if (command.action === "close" && !this.manager.isRunning) {
           // Destroy the current connection only after its response has
           // flushed, then drop the rest via closeServer().
           conn.once("finish", () => conn.destroy());

@@ -12,8 +12,8 @@ camoufox-cli forward                 # Go forward
 camoufox-cli reload                  # Reload page
 camoufox-cli url                     # Print current URL
 camoufox-cli title                   # Print page title
-camoufox-cli close                   # Close browser and stop daemon
-camoufox-cli close --all             # Close all sessions
+camoufox-cli close                   # Close your tab (browser exits when the last tab closes)
+camoufox-cli close --all             # Force-close all sessions
 ```
 
 ## Snapshot (Page Analysis)
@@ -78,12 +78,11 @@ camoufox-cli wait --url "*/dashboard" # Wait for URL pattern
 ```bash
 camoufox-cli tabs                    # List open tabs (with owner names)
 camoufox-cli switch 2                # Switch to tab by index
-camoufox-cli close-tab               # Close current tab
 camoufox-cli --tab <name> <cmd>      # Named tab: shared browser + cookies/login,
                                      # independent page/refs/history per tab
 ```
 
-Named tabs are the cheap way to run concurrent agents as one identity: every tab shares the session's single browser (same fingerprint, same login state), while snapshot refs and history stay per-tab. A finishing agent frees its tab with `--tab <name> close-tab`; `close` shuts down the whole browser for everyone. Tab names must be unique per agent: generate one once — a task slug + shell-generated random suffix, e.g. `TAB="price-scan-$(openssl rand -hex 2)"` — and reuse the printed name for every command; don't invent the suffix yourself (LLM-"random" characters collide).
+Named tabs are the cheap way to run concurrent agents as one identity: every tab shares the session's single browser (same fingerprint, same login state), while snapshot refs and history stay per-tab. A finishing agent runs `close` addressed to its own tab (`--tab <name> close`) — that releases only this tab, and the browser exits by itself when the last tab closes, so no coordination between agents is needed. Tab names must be unique per agent: generate one once — a task slug + shell-generated random suffix, e.g. `TAB="price-scan-$(openssl rand -hex 2)"` — and reuse the printed name for every command; don't invent the suffix yourself (LLM-"random" characters collide).
 
 ## Cookies
 
@@ -98,7 +97,7 @@ camoufox-cli cookies export file.json # Export cookies to file
 ```bash
 camoufox-cli sessions                # List active sessions
 camoufox-cli --session <name> <cmd>  # Run command in named session
-camoufox-cli close --all             # Close all sessions
+camoufox-cli close --all             # Force-close all sessions
 ```
 
 A session is a separate browser instance with its own fingerprint, cookies, and launch options (proxy/locale/persistent). For concurrent agents acting as ONE identity, prefer named tabs (see Tabs above) — one browser instead of N.

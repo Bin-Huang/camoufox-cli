@@ -160,10 +160,6 @@ class TestBuildCommand:
         cmd = build_command("switch", ["switch", "2"])
         assert cmd["params"]["index"] == 2
 
-    def test_close_tab(self):
-        cmd = build_command("close-tab", ["close-tab"])
-        assert cmd["action"] == "close-tab"
-
     # --- Cookies ---
     def test_cookies_list(self):
         cmd = build_command("cookies", ["cookies"])
