@@ -22,7 +22,7 @@ Every browser automation follows this pattern:
 2. **Snapshot**: `camoufox-cli snapshot -i` (get element refs like `@e1`, `@e2`)
 3. **Interact**: Use refs to click, fill, select
 4. **Re-snapshot**: After navigation or DOM changes, get fresh refs
-5. **Close**: `camoufox-cli close` (close the browser when the entire task is fully complete; keep it open if the user may have follow-up instructions)
+5. **Close**: On your own browser (no `--tab`), run `camoufox-cli close` when the entire task is complete. **If you were given a `--tab <name>` (a shared browser), run `camoufox-cli --tab <name> close-tab` instead — plain `close` shuts the browser down for every other agent sharing it; only the coordinator runs `close` at the very end.** Keep it open if the user may have follow-up instructions.
 
 ```bash
 camoufox-cli open https://example.com/form
