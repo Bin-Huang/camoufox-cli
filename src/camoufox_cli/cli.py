@@ -280,9 +280,6 @@ def build_command(action: str, rest: list[str]) -> dict:
         case "switch":
             index = _require(rest, 1, "Usage: camoufox-cli switch <tab-index>")
             return {"id": "r1", "action": "switch", "params": {"index": int(index)}}
-        case "close-tab":
-            return {"id": "r1", "action": "close-tab", "params": {}}
-
         # Install
         case "install":
             return {"id": "r1", "action": "install", "params": {"with_deps": "--with-deps" in rest}}
@@ -440,7 +437,8 @@ def main():
         if not sessions:
             print("No active sessions.")
             return
-        close_cmd = {"id": "r1", "action": "close", "params": {}}
+        # Force: tear each session's browser down regardless of open tabs.
+        close_cmd = {"id": "r1", "action": "close", "params": {"force": True}}
         for session in sessions:
             sock_path = get_socket_path(session)
             try:
@@ -480,7 +478,8 @@ Navigation:
   reload                  Reload page
   url                     Print current URL
   title                   Print page title
-  close [--all]           Close browser and daemon (--all: all sessions)
+  close [--all]           Close your tab; browser and daemon exit when the
+                          last tab closes (--all: force-close all sessions)
 
 Snapshot:
   snapshot [-i] [-s sel]  Aria tree (-i interactive, -s scoped)
@@ -507,7 +506,6 @@ Scroll & Wait:
 Tabs:
   tabs                    List open tabs
   switch <index>          Switch to tab
-  close-tab               Close current tab
 
 Session:
   sessions                List active sessions

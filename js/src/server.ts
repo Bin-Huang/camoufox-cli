@@ -85,7 +85,10 @@ export class DaemonServer {
         const response = await execute(this.manager, command as any);
         conn.end(serializeResponse(response));
 
-        if (command.action === "close") {
+        // A close releases the caller's tab; the daemon exits only when that
+        // was the last tab (the manager shut the browser down). Other agents'
+        // tabs keep the daemon alive.
+        if (command.action === "close" && !this.manager.isRunning) {
           this.server?.close();
         }
       } catch (e: any) {

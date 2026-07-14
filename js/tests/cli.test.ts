@@ -192,11 +192,6 @@ describe("buildCommand", () => {
     expect((cmd.params as any).index).toBe(2);
   });
 
-  it("close-tab", () => {
-    const cmd = buildCommand("close-tab", ["close-tab"]);
-    expect(cmd.action).toBe("close-tab");
-  });
-
   // --- Session ---
   it("sessions", () => {
     const cmd = buildCommand("sessions", ["sessions"]);

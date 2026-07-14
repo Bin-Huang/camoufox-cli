@@ -68,9 +68,10 @@ def daemon():
 
     yield SOCK_PATH
 
-    # Shut down daemon
+    # Shut down daemon. Tests leave named tabs open, so a plain close would
+    # only release the default tab and keep the daemon alive; force it.
     try:
-        send_command(SOCK_PATH, {"id": "teardown", "action": "close", "params": {}})
+        send_command(SOCK_PATH, {"id": "teardown", "action": "close", "params": {"force": True}})
     except Exception:
         pass
     thread.join(timeout=10)
@@ -244,20 +245,30 @@ class TestE2E:
         resp = cmd(daemon, "back", tab="b")
         assert resp["success"] is False
 
-    def test_close_tab_for_named_tab(self, daemon):
+    def test_close_releases_named_tab_keeps_browser(self, daemon):
         cmd(daemon, "open", {"url": "data:text/html,<h1>C</h1>"}, tab="c")
-        resp = cmd(daemon, "close-tab", tab="c")
+        resp = cmd(daemon, "close", tab="c")
+        assert resp["success"] is True
+        # Other tabs (the default one) keep the browser and daemon alive.
+        resp = cmd(daemon, "url")
         assert resp["success"] is True
 
-    def test_close_tab_does_not_hijack_another_tab(self, daemon):
+    def test_close_does_not_hijack_another_tab(self, daemon):
         # Two agents, each on its own page.
         cmd(daemon, "open", {"url": "data:text/html,<title>KEEP</title>"}, tab="keep")
         cmd(daemon, "open", {"url": "data:text/html,<title>GOING</title>"}, tab="going")
-        # The finishing agent closes its tab.
-        assert cmd(daemon, "close-tab", tab="going")["success"] is True
+        # The finishing agent closes — this must release only its own tab.
+        assert cmd(daemon, "close", tab="going")["success"] is True
         # The other agent must still be on its OWN page, not a hijacked one.
         resp = cmd(daemon, "title", tab="keep")
         assert resp["data"]["title"] == "KEEP"
+
+    def test_close_is_idempotent_on_pageless_tab(self, daemon):
+        # A close from a tab that never opened a page succeeds as a no-op and
+        # must not shut down the browser other tabs are using.
+        resp = cmd(daemon, "close", tab="never-opened-close")
+        assert resp["success"] is True
+        assert cmd(daemon, "url")["success"] is True
 
     def test_command_on_pageless_tab_errors(self, daemon):
         # A read command on a tab that never opened a page fails loudly instead
@@ -267,7 +278,7 @@ class TestE2E:
         assert "no open page" in resp["error"]
 
     def test_close_shuts_down_daemon(self):
-        """Close command shuts down the daemon (run last, standalone)."""
+        """Closing the last tab shuts down the daemon (run last, standalone)."""
         session = f"e2e-close-{os.getpid()}-{int(time.time())}"
         sock = f"/tmp/camoufox-cli-{session}.sock"
         server = DaemonServer(session=session, headless=True, timeout=60)
@@ -275,6 +286,11 @@ class TestE2E:
         thread.start()
         wait_for_socket(sock)
 
+        resp = send_command(sock, {"id": "r0", "action": "open", "params": {"url": FIXTURE_URL}})
+        assert resp["success"] is True
+
+        # The default tab is the only live tab, so this close takes the
+        # browser — and with it the daemon — down.
         resp = send_command(sock, {"id": "r1", "action": "close", "params": {}})
         assert resp["success"] is True
 
