@@ -17,6 +17,10 @@ export class DaemonServer {
   private lastActivity = Date.now();
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private bound = false;
+  // The server runs with allowHalfOpen, so a client that half-closes leaves
+  // the server side lingering until we destroy it. Track live connections so
+  // shutdown can drop them — otherwise server.close() never emits 'close'.
+  private connections = new Set<net.Socket>();
 
   constructor(opts: { session?: string; headless?: boolean; timeout?: number; persistent?: string | null; proxy?: string | null; geoip?: boolean; locale?: string | null }) {
     this.session = opts.session ?? "default";
@@ -33,13 +37,13 @@ export class DaemonServer {
     this.watchdogTimer = setInterval(() => {
       if (Date.now() - this.lastActivity > this.timeout * 1000) {
         process.stderr.write(`[camoufox-cli] Idle timeout (${this.timeout}s), shutting down\n`);
-        this.server?.close();
+        this.closeServer();
       }
     }, 10000);
 
     // Signal handlers
-    process.on("SIGTERM", () => { this.server?.close(); });
-    process.on("SIGINT", () => { this.server?.close(); });
+    process.on("SIGTERM", () => { this.closeServer(); });
+    process.on("SIGINT", () => { this.closeServer(); });
 
     this.server = net.createServer({ allowHalfOpen: true }, (conn) => this.handleConnection(conn));
 
@@ -62,6 +66,9 @@ export class DaemonServer {
   }
 
   private handleConnection(conn: net.Socket): void {
+    this.connections.add(conn);
+    conn.on("close", () => this.connections.delete(conn));
+
     let data = "";
     let handled = false;
 
@@ -87,9 +94,13 @@ export class DaemonServer {
 
         // A close releases the caller's tab; the daemon exits only when that
         // was the last tab (the manager shut the browser down). Other agents'
-        // tabs keep the daemon alive.
+        // tabs keep the daemon alive, so a non-final close just responds and
+        // its connection cleans up on the normal path.
         if (command.action === "close" && !this.manager.isRunning) {
-          this.server?.close();
+          // Destroy the current connection only after its response has
+          // flushed, then drop the rest via closeServer().
+          conn.once("finish", () => conn.destroy());
+          this.closeServer(conn);
         }
       } catch (e: any) {
         conn.end(Buffer.from(JSON.stringify({ id: "?", success: false, error: String(e) }) + "\n"));
@@ -157,12 +168,24 @@ export class DaemonServer {
     }
   }
 
+  /**
+   * Stop the server and drop every lingering half-open connection so it can
+   * actually emit 'close'. Without destroying connections, allowHalfOpen keeps
+   * them alive and server.close() never completes, so the daemon hangs forever.
+   * Pass `except` to spare one connection (e.g. the in-flight close command,
+   * which destroys itself once its response has flushed).
+   */
+  private closeServer(except?: net.Socket): void {
+    this.server?.close();
+    for (const c of this.connections) {
+      if (c !== except) c.destroy();
+    }
+  }
+
   private async shutdown(): Promise<void> {
     if (this.watchdogTimer) clearInterval(this.watchdogTimer);
     await this.manager.close();
-    if (this.server) {
-      try { this.server.close(); } catch {}
-    }
+    this.closeServer();
     // Remove only the files this daemon owns, so a losing daemon
     // (bind failure, race) never deletes the live daemon's socket/pid.
     if (this.bound) {
