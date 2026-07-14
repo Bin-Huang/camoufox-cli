@@ -203,6 +203,38 @@ describe("DaemonServer", () => {
     expect(fs.existsSync(PID_PATH)).toBe(false);
   });
 
+  it("shuts down on close even with a lingering open connection", async () => {
+    const server = new DaemonServer({ session: TEST_SESSION, timeout: 60 });
+    const serverPromise = server.start();
+
+    for (let i = 0; i < 50; i++) {
+      if (fs.existsSync(SOCK_PATH)) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    // An idle connection the server never responds to (e.g. a liveness check
+    // that connects and sends no complete command). It stays in the server's
+    // connection set — and used to stop server.close() from ever emitting
+    // 'close', hanging the daemon forever.
+    const lingering = net.createConnection(SOCK_PATH);
+    await new Promise((r) => lingering.once("connect", r));
+
+    // Now close over a second connection. The daemon must still shut down.
+    const closer = net.createConnection(SOCK_PATH, () => {
+      closer.end(JSON.stringify({ id: "r1", action: "close", params: {} }) + "\n");
+    });
+    closer.on("data", () => {});
+
+    await Promise.race([
+      serverPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("daemon did not shut down within 5s")), 5000)),
+    ]);
+
+    lingering.destroy();
+    expect(fs.existsSync(SOCK_PATH)).toBe(false);
+    expect(fs.existsSync(PID_PATH)).toBe(false);
+  });
+
   // A daemon that loses the pid-claim race exits via process.exit(), which
   // does NOT run finally — so this must spawn a real daemon process to be
   // faithful (mocking process.exit as a throw lets finally run and hides the
