@@ -96,8 +96,10 @@ class DaemonServer:
         response = execute(self.manager, command)
         conn.sendall(serialize_response(response))
 
-        # If close command, shut down the daemon
-        if command.get("action") == "close":
+        # A close releases the caller's tab; the daemon exits only when that
+        # was the last tab (the manager shut the browser down). Other agents'
+        # tabs keep the daemon alive.
+        if command.get("action") == "close" and not self.manager.is_running:
             self._running = False
 
     def _idle_watchdog(self) -> None:

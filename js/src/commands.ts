@@ -83,8 +83,15 @@ const cmdTitle: Handler = async (manager, cmdId) => {
   return okResponse(cmdId, { title: await (await manager.getPage()).title() });
 };
 
-const cmdClose: Handler = async (manager, cmdId) => {
-  await manager.close();
+const cmdClose: Handler = async (manager, cmdId, params) => {
+  // Close = release *my* tab; the browser exits when the last tab leaves.
+  // Callers never need to know whether other agents share the browser.
+  // `force` (used by `close --all`) tears the whole browser down regardless.
+  if (params.force) {
+    await manager.shutdown();
+  } else {
+    await manager.release();
+  }
   return okResponse(cmdId, { closed: true });
 };
 
@@ -277,14 +284,6 @@ const cmdSwitch: Handler = async (manager, cmdId, params) => {
   return okResponse(cmdId, { url: page.url(), title: await page.title() });
 };
 
-const cmdCloseTab: Handler = async (manager, cmdId) => {
-  await manager.closeCurrentTab();
-  // Don't call getPage() here — the tab is gone, and recreating a page would
-  // both defeat the purpose (freeing the agent's page) and, pre-fix, hand back
-  // another agent's page.
-  return okResponse(cmdId, { closed: true });
-};
-
 // ---------------------------------------------------------------------------
 // Cookies
 // ---------------------------------------------------------------------------
@@ -343,7 +342,6 @@ const HANDLERS: Record<string, Handler> = {
   wait: cmdWait,
   tabs: cmdTabs,
   switch: cmdSwitch,
-  "close-tab": cmdCloseTab,
   cookies: cmdCookies,
 };
 

@@ -79,7 +79,7 @@ def _cmd_open(manager: TabView, cmd_id: str, params: dict) -> dict:
             # The whole browser/context is gone. A plain close+relaunch is safe
             # here because this daemon is single-threaded; the JS daemon handles
             # connections concurrently and coalesces this via recoverDeadBrowser.
-            manager.close()
+            manager.shutdown()
             manager.launch(headless=params.get("headless", True))
             page = manager.get_page(create=True)
             page.goto(url, wait_until="domcontentloaded")
@@ -119,7 +119,13 @@ def _cmd_title(manager: TabView, cmd_id: str, params: dict) -> dict:
 
 
 def _cmd_close(manager: TabView, cmd_id: str, params: dict) -> dict:
-    manager.close()
+    # Close = release *my* tab; the browser exits when the last tab leaves.
+    # Callers never need to know whether other agents share the browser.
+    # `force` (used by `close --all`) tears the whole browser down regardless.
+    if params.get("force"):
+        manager.shutdown()
+    else:
+        manager.release()
     return ok_response(cmd_id, {"closed": True})
 
 
@@ -327,14 +333,6 @@ def _cmd_switch(manager: TabView, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 
 
-def _cmd_close_tab(manager: TabView, cmd_id: str, params: dict) -> dict:
-    manager.close_current_tab()
-    # Don't call get_page() here — the tab is gone, and recreating a page would
-    # both defeat the purpose (freeing the agent's page) and, pre-fix, hand back
-    # another agent's page.
-    return ok_response(cmd_id, {"closed": True})
-
-
 # ---------------------------------------------------------------------------
 # Cookies
 # ---------------------------------------------------------------------------
@@ -403,7 +401,6 @@ _HANDLERS = {
     # Tab management
     "tabs": _cmd_tabs,
     "switch": _cmd_switch,
-    "close-tab": _cmd_close_tab,
     # Cookies
     "cookies": _cmd_cookies,
 }

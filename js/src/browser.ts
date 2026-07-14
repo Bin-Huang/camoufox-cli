@@ -242,21 +242,31 @@ export class BrowserManager {
     return st.page;
   }
 
-  async closeCurrentTab(tab: string = "default"): Promise<void> {
-    const ctx = this.getContext();
+  /**
+   * Close the named tab; last one out shuts down the whole browser.
+   *
+   * This is the 'close' command. Every caller — solo or one of many
+   * concurrent agents — runs the same thing without knowing about the
+   * others: it closes only the caller's own page (never a neighbor's,
+   * which would hijack another agent's tab), and when no live tab remains
+   * the browser itself is closed. Idempotent: releasing a tab that has no
+   * open page is a no-op, not an error.
+   */
+  async releaseTab(tab: string): Promise<void> {
+    // Remove the entry before any await so a concurrent release of another
+    // tab doesn't still count this one as live.
     const st = this.tabs.get(tab);
-    if (!st?.page || st.page.isClosed()) {
-      throw new Error(`Tab '${tab}' has no open page.`);
-    }
-    if (ctx.pages().length <= 1) {
-      throw new Error("Cannot close the last tab. Use 'close' to shut down the browser.");
-    }
-    // Close only this tab's own page and forget the tab. Don't repoint to a
-    // neighbor page — under the shared-browser model that page belongs to
-    // another agent, so repointing would silently hijack it.
-    const current = st.page;
     this.tabs.delete(tab);
-    await current.close();
+    if (st?.page && !st.page.isClosed()) {
+      try { await st.page.close(); } catch {}
+    }
+    // Tabs (not context pages) are the refcount: pages nobody owns —
+    // window.open popups, pages of misrouted tab names — must not keep
+    // the browser alive after the last real tab leaves.
+    for (const other of this.tabs.values()) {
+      if (other.page && !other.page.isClosed()) return;
+    }
+    await this.close();
   }
 
   async goBack(tab: string = "default"): Promise<string | null> {
@@ -337,10 +347,6 @@ export class TabView {
     return this.manager.switchToTab(this.tab, index);
   }
 
-  closeCurrentTab(): Promise<void> {
-    return this.manager.closeCurrentTab(this.tab);
-  }
-
   pushHistory(url: string): void {
     this.manager.tabState(this.tab).pushHistory(url);
   }
@@ -353,7 +359,13 @@ export class TabView {
     return this.manager.goForward(this.tab);
   }
 
-  close(): Promise<void> {
+  /** Close this tab; the browser shuts down when the last tab leaves. */
+  release(): Promise<void> {
+    return this.manager.releaseTab(this.tab);
+  }
+
+  /** Force-close the whole browser regardless of other tabs (close --all). */
+  shutdown(): Promise<void> {
     return this.manager.close();
   }
 }

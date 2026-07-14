@@ -258,9 +258,6 @@ export function buildCommand(action: string, rest: string[]): Record<string, unk
       return { id: "r1", action: "tabs", params: {} };
     case "switch":
       return { id: "r1", action: "switch", params: { index: parseInt(require_(rest, 1, "Usage: camoufox-cli switch <tab-index>"), 10) } };
-    case "close-tab":
-      return { id: "r1", action: "close-tab", params: {} };
-
     case "sessions":
       return { id: "r1", action: "sessions", params: {} };
     case "install":
@@ -420,7 +417,8 @@ async function main() {
   if (action === "close" && (command.params as any)?.all) {
     const sessions = listSessions();
     if (sessions.length === 0) { console.log("No active sessions."); return; }
-    const closeCmd = { id: "r1", action: "close", params: {} };
+    // Force: tear each session's browser down regardless of open tabs.
+    const closeCmd = { id: "r1", action: "close", params: { force: true } };
     for (const session of sessions) {
       try { await sendCommand(getSocketPath(session), closeCmd); }
       catch (e: any) { process.stderr.write(`Failed to close session ${session}: ${e.message}\n`); }
@@ -459,7 +457,8 @@ Navigation:
   reload                  Reload page
   url                     Print current URL
   title                   Print page title
-  close [--all]           Close browser and daemon (--all: all sessions)
+  close [--all]           Close your tab; browser and daemon exit when the
+                          last tab closes (--all: force-close all sessions)
 
 Snapshot:
   snapshot [-i] [-s sel]  Aria tree (-i interactive, -s scoped)
@@ -486,7 +485,6 @@ Scroll & Wait:
 Tabs:
   tabs                    List open tabs
   switch <index>          Switch to tab
-  close-tab               Close current tab
 
 Session:
   sessions                List active sessions

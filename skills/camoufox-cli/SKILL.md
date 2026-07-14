@@ -22,7 +22,7 @@ Every browser automation follows this pattern:
 2. **Snapshot**: `camoufox-cli snapshot -i` (get element refs like `@e1`, `@e2`)
 3. **Interact**: Use refs to click, fill, select
 4. **Re-snapshot**: After navigation or DOM changes, get fresh refs
-5. **Close**: `camoufox-cli close` (close the browser when the entire task is fully complete; keep it open if the user may have follow-up instructions)
+5. **Close**: `camoufox-cli close` when the entire task is complete — with the same `--tab`/`--session` flags as your other commands. Keep it open if the user may have follow-up instructions.
 
 ```bash
 camoufox-cli open https://example.com/form
@@ -64,8 +64,8 @@ camoufox-cli forward                 # Go forward
 camoufox-cli reload                  # Reload page
 camoufox-cli url                     # Print current URL
 camoufox-cli title                   # Print page title
-camoufox-cli close                   # Close browser and stop daemon
-camoufox-cli close --all             # Close all sessions
+camoufox-cli close                   # Close your tab (browser exits when the last tab closes)
+camoufox-cli close --all             # Force-close all sessions
 
 # Snapshot
 camoufox-cli snapshot                # Full aria tree of page
@@ -104,7 +104,6 @@ camoufox-cli wait --url "*/dashboard" # Wait for URL pattern
 # Tabs
 camoufox-cli tabs                    # List open tabs (with owner names)
 camoufox-cli switch 2                # Switch to tab by index
-camoufox-cli close-tab               # Close current tab
 camoufox-cli --tab <unique-name> open <url> # Named tab: shared browser + login, own page/refs
 
 # Cookies & State
@@ -115,7 +114,7 @@ camoufox-cli cookies export file.json # Export cookies
 # Sessions
 camoufox-cli sessions                # List active sessions
 camoufox-cli --session work open <url> # Use named session
-camoufox-cli close --all             # Close all sessions
+camoufox-cli close --all             # Force-close all sessions
 
 # Setup
 camoufox-cli install                 # Download Camoufox browser
@@ -185,7 +184,7 @@ camoufox-cli --tab inbox-scan-x4q open https://app.example.com/inbox
 camoufox-cli --tab report-pull-9kf open https://app.example.com/reports
 camoufox-cli --tab inbox-scan-x4q snapshot -i   # refs are per tab
 camoufox-cli tabs                               # Lists every tab with its owner name
-camoufox-cli --tab inbox-scan-x4q close-tab     # Free a tab when its agent is done
+camoufox-cli --tab inbox-scan-x4q close         # Frees only this tab; browser stays for the others
 ```
 
 **Picking your tab name.** Nothing enforces uniqueness — two agents using the same name share one page pointer and will clobber each other. Generate your name ONCE at the start of your task: a short slug of *your specific task* plus a shell-generated random suffix — don't invent the suffix yourself, LLM-"random" characters are biased and concurrent agents may produce the same ones. Then reuse the printed name verbatim in every subsequent command. (If your instructions explicitly assign you a tab name, use that instead.)
@@ -196,7 +195,7 @@ TAB="price-scan-$(openssl rand -hex 2)" && echo "$TAB" && camoufox-cli --tab "$T
 camoufox-cli --tab price-scan-9f3c snapshot -i
 ```
 
-Use tabs when subagents should act as the same identity (e.g. all operating the same logged-in account). Note `close` still shuts down the whole browser for every tab — a finishing subagent should use `close-tab` instead, and only the coordinator should run `close` at the end.
+Use tabs when subagents should act as the same identity (e.g. all operating the same logged-in account). Cleanup needs no coordination: every agent runs `close` when done, addressed to its own tab (`camoufox-cli --tab <name> close`) — it releases only that tab, and the browser exits by itself when the last tab closes.
 
 Tabs share one browser process, so commands from different tabs may queue behind a slow navigation or `wait`; separate sessions run as independent processes and execute fully in parallel. If a few agents are extremely command-heavy, consider giving those their own session and keeping the rest on tabs.
 
@@ -243,18 +242,16 @@ camoufox-cli sessions                  # Check active sessions
 
 Names are just strings and nothing enforces uniqueness — follow the "Picking your tab name" rule above (task slug + shell-generated random suffix, chosen once). The same applies to session names.
 
-Always close your browser session when done to avoid leaked processes:
+Always run `close` when done to avoid leaked processes — with the same `--tab`/`--session` flags as your other commands, since `close` releases the tab the command is addressed to. The browser exits when the last tab closes, so every agent cleans up the same way without knowing about the others:
 
 ```bash
-camoufox-cli --tab orders-audit-p2m close-tab   # Free one tab (browser keeps running)
-camoufox-cli close                              # Close default session (all its tabs)
-camoufox-cli --session shop-a-buyer close       # Close specific session
-camoufox-cli close --all                        # Close all sessions
+camoufox-cli --tab orders-audit-p2m close       # Free this tab; browser exits if it was the last
+camoufox-cli close                              # Same, for the default tab
+camoufox-cli --session shop-a-buyer close       # Same, within a named session
+camoufox-cli close --all                        # Force-close all sessions (cleanup escape hatch)
 ```
 
-Note `close` shuts down the whole session's browser for every tab in it — finishing subagents should use `close-tab`; the coordinator runs `close` at the end.
-
-If a previous session was not closed properly, the daemon may still be running. Use `camoufox-cli close` to clean it up before starting new work.
+If a previous session was not closed properly, the daemon may still be running. Use `camoufox-cli close` (or `close --all`) to clean it up before starting new work.
 
 ## Timeouts and Slow Pages
 
