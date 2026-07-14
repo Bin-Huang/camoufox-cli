@@ -1,15 +1,27 @@
 import { describe, it, expect, afterEach } from "vitest";
 import * as net from "node:net";
 import * as fs from "node:fs";
+import * as path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { DaemonServer } from "../src/server.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TEST_SESSION = `test-${process.pid}-${Date.now()}`;
 const SOCK_PATH = `/tmp/camoufox-cli-${TEST_SESSION}.sock`;
 const PID_PATH = `/tmp/camoufox-cli-${TEST_SESSION}.pid`;
 
+function tempPidFiles(): string[] {
+  return fs.readdirSync("/tmp").filter((f) => f.startsWith(`camoufox-cli-${TEST_SESSION}.pid.`));
+}
+
 function cleanup() {
   for (const p of [SOCK_PATH, PID_PATH]) {
     try { fs.unlinkSync(p); } catch {}
+  }
+  for (const f of tempPidFiles()) {
+    try { fs.unlinkSync(`/tmp/${f}`); } catch {}
   }
 }
 
@@ -221,5 +233,25 @@ describe("DaemonServer", () => {
     lingering.destroy();
     expect(fs.existsSync(SOCK_PATH)).toBe(false);
     expect(fs.existsSync(PID_PATH)).toBe(false);
+  });
+
+  // A daemon that loses the pid-claim race exits via process.exit(), which
+  // does NOT run finally — so this must spawn a real daemon process to be
+  // faithful (mocking process.exit as a throw lets finally run and hides the
+  // bug). Runs against the built daemon; skips gracefully when dist is absent.
+  it("a losing daemon exits without leaking a temp pid file", async () => {
+    const daemonJs = path.resolve(__dirname, "../dist/daemon.js");
+    if (!fs.existsSync(daemonJs)) return; // needs `npm run build`; real-CLI covers it otherwise
+
+    // Hold the session with a definitely-alive pid (this test process).
+    fs.writeFileSync(PID_PATH, String(process.pid));
+
+    const child = spawn(process.execPath, [daemonJs, "--session", TEST_SESSION], { stdio: "ignore" });
+    const code = await new Promise<number>((resolve) => child.on("exit", (c) => resolve(c ?? -1)));
+
+    expect(code).toBe(1);                 // loser exits non-zero
+    expect(tempPidFiles()).toEqual([]);   // and leaves no temp pid file behind
+    // ...and never deletes the live winner's pid file.
+    expect(fs.readFileSync(PID_PATH, "utf-8").trim()).toBe(String(process.pid));
   });
 });

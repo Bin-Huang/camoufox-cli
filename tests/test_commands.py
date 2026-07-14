@@ -398,7 +398,7 @@ class TestFixtureIntegration:
     def test_fill(self):
         execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
         # Find the textbox ref
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "textbox")
+        entry = next(e for e in self.manager.state("default").refs._entries.values() if e.role == "textbox")
         resp = execute(self.manager, {
             "id": "r2", "action": "fill",
             "params": {"ref": f"@{entry.ref}", "text": "Alice"},
@@ -414,7 +414,7 @@ class TestFixtureIntegration:
     @pytest.mark.integration
     def test_type(self):
         execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "textbox")
+        entry = next(e for e in self.manager.state("default").refs._entries.values() if e.role == "textbox")
         resp = execute(self.manager, {
             "id": "r2", "action": "type",
             "params": {"ref": f"@{entry.ref}", "text": "Bob"},
@@ -424,7 +424,7 @@ class TestFixtureIntegration:
     @pytest.mark.integration
     def test_select(self):
         execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "combobox")
+        entry = next(e for e in self.manager.state("default").refs._entries.values() if e.role == "combobox")
         resp = execute(self.manager, {
             "id": "r2", "action": "select",
             "params": {"ref": f"@{entry.ref}", "value": "Blue"},
@@ -439,7 +439,7 @@ class TestFixtureIntegration:
     @pytest.mark.integration
     def test_check_toggle(self):
         execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "checkbox")
+        entry = next(e for e in self.manager.state("default").refs._entries.values() if e.role == "checkbox")
         ref = f"@{entry.ref}"
         # Check
         resp = execute(self.manager, {"id": "r2", "action": "check", "params": {"ref": ref}})
@@ -461,7 +461,7 @@ class TestFixtureIntegration:
     @pytest.mark.integration
     def test_hover(self):
         execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "button")
+        entry = next(e for e in self.manager.state("default").refs._entries.values() if e.role == "button")
         resp = execute(self.manager, {
             "id": "r2", "action": "hover",
             "params": {"ref": f"@{entry.ref}"},
@@ -472,7 +472,7 @@ class TestFixtureIntegration:
     def test_click_button(self):
         """Click a non-link button and verify side effect."""
         execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "button")
+        entry = next(e for e in self.manager.state("default").refs._entries.values() if e.role == "button")
         resp = execute(self.manager, {
             "id": "r2", "action": "click",
             "params": {"ref": f"@{entry.ref}"},
@@ -487,7 +487,7 @@ class TestFixtureIntegration:
     @pytest.mark.integration
     def test_press(self):
         execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "textbox")
+        entry = next(e for e in self.manager.state("default").refs._entries.values() if e.role == "textbox")
         # Focus the textbox first
         execute(self.manager, {"id": "r2", "action": "click", "params": {"ref": f"@{entry.ref}"}})
         resp = execute(self.manager, {"id": "r3", "action": "press", "params": {"key": "Tab"}})
@@ -496,7 +496,7 @@ class TestFixtureIntegration:
     @pytest.mark.integration
     def test_text_by_ref(self):
         execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "heading")
+        entry = next(e for e in self.manager.state("default").refs._entries.values() if e.role == "heading")
         resp = execute(self.manager, {
             "id": "r2", "action": "text",
             "params": {"target": f"@{entry.ref}"},
