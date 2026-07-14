@@ -82,7 +82,7 @@ camoufox-cli --tab <name> <cmd>      # Named tab: shared browser + cookies/login
                                      # independent page/refs/history per tab
 ```
 
-Named tabs are the cheap way to run concurrent agents as one identity: every tab shares the session's single browser (same fingerprint, same login state), while snapshot refs and history stay per-tab. A finishing agent just runs `close` — it releases only that agent's tab, and the browser exits by itself when the last tab closes, so no coordination between agents is needed. Tab names must be unique per agent: generate one once — a task slug + shell-generated random suffix, e.g. `TAB="price-scan-$(openssl rand -hex 2)"` — and reuse the printed name for every command; don't invent the suffix yourself (LLM-"random" characters collide).
+Named tabs are the cheap way to run concurrent agents as one identity: every tab shares the session's single browser (same fingerprint, same login state), while snapshot refs and history stay per-tab. A finishing agent runs `close` addressed to its own tab (`--tab <name> close`) — that releases only this tab, and the browser exits by itself when the last tab closes, so no coordination between agents is needed. Tab names must be unique per agent: generate one once — a task slug + shell-generated random suffix, e.g. `TAB="price-scan-$(openssl rand -hex 2)"` — and reuse the printed name for every command; don't invent the suffix yourself (LLM-"random" characters collide).
 
 ## Cookies
 

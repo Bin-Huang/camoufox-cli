@@ -22,7 +22,7 @@ Every browser automation follows this pattern:
 2. **Snapshot**: `camoufox-cli snapshot -i` (get element refs like `@e1`, `@e2`)
 3. **Interact**: Use refs to click, fill, select
 4. **Re-snapshot**: After navigation or DOM changes, get fresh refs
-5. **Close**: Run `camoufox-cli close` when your task is complete. It closes only *your* tab; the browser and daemon exit automatically when the last tab closes, so it is always safe — even when other agents share the browser via `--tab`. Keep it open if the user may have follow-up instructions.
+5. **Close**: `camoufox-cli close` when the entire task is complete — with the same `--tab`/`--session` flags as your other commands. Keep it open if the user may have follow-up instructions.
 
 ```bash
 camoufox-cli open https://example.com/form
@@ -195,7 +195,7 @@ TAB="price-scan-$(openssl rand -hex 2)" && echo "$TAB" && camoufox-cli --tab "$T
 camoufox-cli --tab price-scan-9f3c snapshot -i
 ```
 
-Use tabs when subagents should act as the same identity (e.g. all operating the same logged-in account). Cleanup needs no coordination: every agent just runs `close` when done — it releases only that agent's tab, and the browser exits by itself when the last tab closes.
+Use tabs when subagents should act as the same identity (e.g. all operating the same logged-in account). Cleanup needs no coordination: every agent runs `close` when done, addressed to its own tab (`camoufox-cli --tab <name> close`) — it releases only that tab, and the browser exits by itself when the last tab closes.
 
 Tabs share one browser process, so commands from different tabs may queue behind a slow navigation or `wait`; separate sessions run as independent processes and execute fully in parallel. If a few agents are extremely command-heavy, consider giving those their own session and keeping the rest on tabs.
 
@@ -242,7 +242,7 @@ camoufox-cli sessions                  # Check active sessions
 
 Names are just strings and nothing enforces uniqueness — follow the "Picking your tab name" rule above (task slug + shell-generated random suffix, chosen once). The same applies to session names.
 
-Always run `close` when done to avoid leaked processes. `close` releases only your own tab and the browser exits when the last tab closes, so every agent — with or without `--tab` — cleans up the same way, without knowing about the others:
+Always run `close` when done to avoid leaked processes — with the same `--tab`/`--session` flags as your other commands, since `close` releases the tab the command is addressed to. The browser exits when the last tab closes, so every agent cleans up the same way without knowing about the others:
 
 ```bash
 camoufox-cli --tab orders-audit-p2m close       # Free this tab; browser exits if it was the last
