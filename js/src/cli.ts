@@ -324,7 +324,7 @@ const APT_DEPS = [
   "libatk1.0-0", "libcairo-gobject2", "libcairo2", "libgdk-pixbuf-2.0-0",
   "libxrender1", "libfreetype6", "libfontconfig1", "libdbus-1-3",
   "libnss3", "libnspr4", "libatk-bridge2.0-0", "libdrm2", "libxkbcommon0",
-  "libatspi2.0-0", "libcups2", "libxshmfence1", "libgbm1",
+  "libatspi2.0-0", "libcups2", "libxshmfence1", "libgbm1", "libasound2",
 ];
 
 const DNF_DEPS = [
@@ -340,12 +340,35 @@ const YUM_DEPS = [
   "alsa-lib", "libxkbcommon",
 ];
 
-function resolveAptLibasound(): string {
+/** True when a dry-run install of the package resolves. */
+function aptInstallable(pkg: string): boolean {
   try {
-    execFileSync("dpkg", ["-l", "libasound2t64"], { stdio: "pipe" });
-    return "libasound2t64";
+    execFileSync("apt-get", ["install", "-s", "-y", pkg], { stdio: "pipe" });
+    return true;
   } catch {
-    return "libasound2";
+    return false;
+  }
+}
+
+/**
+ * Map package names to what this system's apt actually knows.
+ *
+ * Ubuntu 24.04's 64-bit time_t transition renamed many runtime libs with a
+ * t64 suffix (libasound2 -> libasound2t64, libgtk-3-0 -> libgtk-3-0t64, ...)
+ * WITHOUT a Provides for the old name, so installing the old names fails.
+ * Fast path: if the plain list resolves as a whole (Debian, older Ubuntu),
+ * use it. Otherwise resolve per package, preferring the plain name and
+ * falling back to <name>t64. Unknown-either-way names are kept so apt
+ * reports the real error instead of this helper guessing silently.
+ */
+function resolveAptDeps(deps: string[]): string[] {
+  try {
+    execFileSync("apt-get", ["install", "-s", "-y", ...deps], { stdio: "pipe" });
+    return deps;
+  } catch {
+    return deps.map((dep) =>
+      aptInstallable(dep) ? dep : aptInstallable(`${dep}t64`) ? `${dep}t64` : dep
+    );
   }
 }
 
@@ -358,8 +381,9 @@ function installSystemDeps(): void {
   process.stderr.write("[camoufox-cli] Installing system dependencies...\n");
 
   if (fs.existsSync("/usr/bin/apt-get")) {
-    const deps = [...APT_DEPS, resolveAptLibasound()];
     execFileSync("sudo", ["apt-get", "update", "-y"], { stdio: "inherit" });
+    // Resolve AFTER update: dry-run resolution needs a populated apt cache.
+    const deps = resolveAptDeps(APT_DEPS);
     execFileSync("sudo", ["apt-get", "install", "-y", ...deps], { stdio: "inherit" });
   } else if (fs.existsSync("/usr/bin/dnf")) {
     execFileSync("sudo", ["dnf", "install", "-y", ...DNF_DEPS], { stdio: "inherit" });
@@ -378,6 +402,18 @@ function installSystemDeps(): void {
 // ---------------------------------------------------------------------------
 
 async function main() {
+  // Preflight before anything touches camoufox-js: its dependency chain uses
+  // JSON import attributes (`with { type: "json" }`), which need Node 20.10+.
+  // Without this check, older Nodes die with a bare SyntaxError deep inside
+  // node_modules (or a silently failing daemon) instead of a usable message.
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if (major < 20 || (major === 20 && minor < 10)) {
+    process.stderr.write(
+      `Error: camoufox-cli requires Node.js 20.10 or newer (found ${process.versions.node}).\n`
+    );
+    process.exit(1);
+  }
+
   const argv = process.argv.slice(2);
   const { flags, command } = parseArgs(argv);
 
