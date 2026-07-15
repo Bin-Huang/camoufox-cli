@@ -13,6 +13,16 @@ const EXPANDED_24 =
   '<a href="/daijro/camoufox/releases/download/v135.0.1-beta.24/camoufox-135.0.1-beta.24-mac.arm64.zip">a</a>';
 const EXPANDED_23 = '<a href="/daijro/camoufox/releases/download/v135.0.1-beta.23/camoufox-135.0.1-beta.23-lin.x86_64.zip">a</a>';
 
+// A prerelease section: its tag link is followed by the "Pre-release" badge
+// (before the next release's tag), mirroring github.com's listing markup.
+const PRERELEASE_PAGE =
+  '<a href="/daijro/camoufox/releases/tag/v152.0.2-alpha">x</a>' +
+  "<span>Pre-release</span>" +
+  '<a href="/daijro/camoufox/releases/tag/v150.0.2-beta.25">x</a>';
+const PRERELEASE_ONLY_PAGE =
+  '<a href="/daijro/camoufox/releases/tag/v146-hardware">x</a>' +
+  "<span>Pre-release</span>";
+
 function fakeResponse(opts: { status?: number; text?: string; json?: unknown }) {
   const status = opts.status ?? 200;
   return {
@@ -71,6 +81,24 @@ describe("iterReleaseAssets", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("skips prerelease and draft releases from the API", async () => {
+    // Prerelease/draft assets can be experimental or incomplete uploads
+    // (e.g. missing the browser binary) and must never be picked.
+    const pre = { name: "pre.zip", browser_download_url: "u0" };
+    const draft = { name: "draft.zip", browser_download_url: "u1" };
+    const stable = { name: "stable.zip", browser_download_url: "u2" };
+    routeFetch({
+      "https://api.github.com/repos/daijro/camoufox/releases": fakeResponse({
+        json: [
+          { prerelease: true, assets: [pre] },
+          { draft: true, assets: [draft] },
+          { assets: [stable] },
+        ],
+      }),
+    });
+    expect(await collect(iterReleaseAssets("daijro/camoufox"))).toEqual([stable]);
+  });
+
   it("falls back to github.com pages when the API is rate-limited", async () => {
     routeFetch({
       "https://api.github.com": fakeResponse({ status: 403 }),
@@ -107,6 +135,30 @@ describe("assetsViaWeb", () => {
         "https://github.com/daijro/camoufox/releases/download/v150.0.2-beta.25/camoufox-150.0.2-alpha.25-lin.x86_64.zip",
     });
     expect(assets).toHaveLength(4);
+  });
+
+  it("skips prerelease sections", async () => {
+    const calls = routeFetch({
+      "https://github.com/daijro/camoufox/releases?page=1": fakeResponse({ text: PRERELEASE_PAGE }),
+      "https://github.com/daijro/camoufox/releases?page=": fakeResponse({ text: "<html>no releases</html>" }),
+      "https://github.com/daijro/camoufox/releases/expanded_assets/v150.0.2-beta.25": fakeResponse({ text: EXPANDED_25 }),
+    });
+    const assets = await collect(assetsViaWeb("daijro/camoufox"));
+    expect(assets.map((a) => a.name)).toEqual(["camoufox-150.0.2-alpha.25-lin.x86_64.zip"]);
+    // The prerelease tag's assets page must not even be requested.
+    expect(calls.some(([u]) => u.includes("v152.0.2-alpha"))).toBe(false);
+  });
+
+  it("a prerelease-only page does not end pagination", async () => {
+    routeFetch({
+      "https://github.com/daijro/camoufox/releases?page=1": fakeResponse({ text: PRERELEASE_ONLY_PAGE }),
+      "https://github.com/daijro/camoufox/releases?page=2": fakeResponse({ text: RELEASES_PAGE_2 }),
+      "https://github.com/daijro/camoufox/releases?page=": fakeResponse({ text: "<html>no releases</html>" }),
+      "https://github.com/daijro/camoufox/releases/expanded_assets/v135.0.1-beta.23": fakeResponse({ text: EXPANDED_23 }),
+    });
+    const assets = await collect(assetsViaWeb("daijro/camoufox"));
+    // Page 1 held only a prerelease; the scan must reach page 2's stable release.
+    expect(assets.map((a) => a.name)).toEqual(["camoufox-135.0.1-beta.23-lin.x86_64.zip"]);
   });
 
   it("paginates until a page has no new tags", async () => {

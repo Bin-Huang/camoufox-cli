@@ -17,7 +17,7 @@ import { join } from "node:path";
 
 import { DefaultAddons, maybeDownloadAddons } from "camoufox-js/dist/addons.js";
 import { downloadMMDB } from "camoufox-js/dist/locale.js";
-import { CamoufoxFetcher, INSTALL_DIR, installedVerStr, webdl } from "camoufox-js/dist/pkgman.js";
+import { CamoufoxFetcher, INSTALL_DIR, installedVerStr, launchPath, webdl } from "camoufox-js/dist/pkgman.js";
 
 const HEADERS = { "User-Agent": "camoufox-cli" };
 const MMDB_URL = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-City.mmdb";
@@ -26,12 +26,42 @@ async function assetsViaApi(repo: string): Promise<any[]> {
   const resp = await fetch(`https://api.github.com/repos/${repo}/releases`, { headers: HEADERS });
   if (!resp.ok) throw new Error(`GitHub API responded with ${resp.status}`);
   const releases = (await resp.json()) as any[];
-  return releases.flatMap((release) => release.assets ?? []);
+  // Skip prereleases/drafts like upstream's fetcher does: their assets can
+  // be experimental or incomplete uploads (e.g. missing the browser binary)
+  // and must never win over the newest stable release.
+  return releases
+    .filter((release) => !release.prerelease && !release.draft)
+    .flatMap((release) => release.assets ?? []);
+}
+
+/**
+ * Extract release tags from a listing page, skipping prereleases.
+ *
+ * The scrape path cannot see the API's `prerelease` flag; on the listing
+ * page a prerelease shows a "Pre-release" badge inside its section, i.e.
+ * between its tag link and the next release's tag link. Scan tag links and
+ * badges as one ordered stream and drop any tag followed by a badge.
+ */
+export function stableTags(listingHtml: string, repo: string): string[] {
+  const escaped = repo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const tokenRe = new RegExp(`/${escaped}/releases/tag/([^"<]+)|(Pre-release)`, "g");
+  const tags: string[] = [];
+  const prerelease = new Set<string>();
+  let current: string | null = null;
+  for (const m of listingHtml.matchAll(tokenRe)) {
+    if (m[1] !== undefined) {
+      current = m[1];
+      if (!tags.includes(current)) tags.push(current);
+    } else if (current !== null) {
+      prerelease.add(current);
+    }
+  }
+  return tags.filter((t) => !prerelease.has(t));
 }
 
 /**
  * Discover release assets by paging through github.com release pages,
- * newest release first. Lazy: stops requesting once the caller stops.
+ * newest stable release first. Lazy: stops requesting once the caller stops.
  */
 export async function* assetsViaWeb(repo: string): AsyncGenerator<any> {
   const escaped = repo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -42,11 +72,17 @@ export async function* assetsViaWeb(repo: string): AsyncGenerator<any> {
   for (let pageNum = 1; ; pageNum++) {
     const listing = await fetch(`https://github.com/${repo}/releases?page=${pageNum}`, { headers: HEADERS });
     if (!listing.ok) throw new Error(`github.com responded with ${listing.status}`);
-    const tags = [...new Set([...(await listing.text()).matchAll(tagRe)].map((m) => m[1]))]
+    const text = await listing.text();
+    // Pagination must advance on ANY new tag (a page holding only
+    // prereleases is not the end of the listing), while assets are
+    // fetched only for the stable ones.
+    const pageTags = [...new Set([...text.matchAll(tagRe)].map((m) => m[1]))]
       .filter((tag) => !seen.has(tag));
-    if (tags.length === 0) return;
-    for (const tag of tags) seen.add(tag);
-    for (const tag of tags) {
+    if (pageTags.length === 0) return;
+    for (const tag of pageTags) seen.add(tag);
+    const stable = new Set(stableTags(text, repo));
+    for (const tag of pageTags) {
+      if (!stable.has(tag)) continue;
       const page = await fetch(`https://github.com/${repo}/releases/expanded_assets/${tag}`, { headers: HEADERS });
       if (!page.ok) continue;
       for (const m of (await page.text()).matchAll(linkRe)) {
@@ -104,6 +140,16 @@ export async function ensureMmdb(): Promise<void> {
   }
 }
 
+/** True when the browser's launch executable is actually on disk. */
+function browserPresent(): boolean {
+  try {
+    launchPath();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Download and install the Camoufox browser, GeoIP database and addons. */
 export async function installBrowser(): Promise<void> {
   const fetcher = new ResilientFetcher();
@@ -115,10 +161,17 @@ export async function installBrowser(): Promise<void> {
   } catch {
     installed = null;
   }
-  if (installed === fetcher.verstr) {
+  // "Up to date" must mean the browser actually works, not just that
+  // version.json matches — otherwise a broken install (version file written
+  // but no browser binary) would be masked forever.
+  if (installed === fetcher.verstr && browserPresent()) {
     process.stderr.write(`[camoufox-cli] Camoufox v${installed} is already up to date.\n`);
   } else {
     await fetcher.install();
+    // A broken release asset (e.g. one missing the browser binary) would
+    // otherwise "install" successfully. Fail loudly here instead of at the
+    // first `open`.
+    launchPath(); // throws CamoufoxNotInstalled if the executable is absent
   }
 
   await ensureMmdb();
