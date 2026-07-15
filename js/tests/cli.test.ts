@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { buildCommand, getSocketPath, parseArgs } from "../src/cli.js";
+import { fileURLToPath } from "node:url";
+import { buildCommand, getSocketPath, getVersion, parseArgs } from "../src/cli.js";
 import { loadDefaults } from "../src/config.js";
 
 // buildCommand calls process.exit on error; mock it to throw instead
@@ -313,6 +314,14 @@ describe("getSocketPath", () => {
 
   it("custom session", () => {
     expect(getSocketPath("my-session")).toBe("/tmp/camoufox-cli-my-session.sock");
+  });
+});
+
+describe("getVersion", () => {
+  it("returns the version from package.json", () => {
+    const pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    expect(getVersion()).toBe(pkg.version);
   });
 });
 

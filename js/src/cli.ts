@@ -97,6 +97,16 @@ export function listSessions(): string[] {
   return sessions.sort();
 }
 
+export function getVersion(): string {
+  // package.json ships in the npm package and sits one level above both src/ and dist/.
+  try {
+    const pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+    return JSON.parse(fs.readFileSync(pkgPath, "utf8")).version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Arg parsing
 // ---------------------------------------------------------------------------
@@ -379,6 +389,13 @@ function installSystemDeps(): void {
 
 async function main() {
   const argv = process.argv.slice(2);
+
+  // Short-circuit before parseArgs: --version has no command and needs no daemon.
+  if (argv.includes("--version")) {
+    console.log(getVersion());
+    return;
+  }
+
   const { flags, command } = parseArgs(argv);
 
   // Resolve default persistent path
@@ -505,6 +522,7 @@ Flags:
   --proxy <url>        Proxy server (e.g. http://host:port or https://host:443)
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
   --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")
+  --version            Print version and exit
 
 Config file:
   ~/.camoufox-cli/config.json sets defaults for the flags above (override the
