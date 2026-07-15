@@ -5,15 +5,6 @@ description: Anti-detect browser automation CLI & Skills for AI agents. Use when
 
 # Anti-Detect Browser Automation with camoufox-cli
 
-## What Makes This Different
-
-camoufox-cli is built on Camoufox (anti-detect Firefox) with C++-level fingerprint spoofing:
-- `navigator.webdriver` = `false`
-- Real browser plugins, randomized canvas/WebGL/audio fingerprints
-- Real Firefox UA string -- passes bot detection on sites that block Chromium automation
-
-Use camoufox-cli instead of agent-browser when the target site has bot detection.
-
 ## Core Workflow
 
 Every browser automation follows this pattern:
