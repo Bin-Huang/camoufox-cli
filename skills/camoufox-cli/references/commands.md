@@ -131,6 +131,7 @@ camoufox-cli --persistent [path] ... # Persistent identity — reuse the same fi
 camoufox-cli --proxy <url> ...      # Proxy server (e.g. http://host:port or http://user:pass@host:port)
 camoufox-cli --no-geoip ...         # Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 camoufox-cli --locale <tag> ...     # Force browser locale (e.g. "en-US" or "en-US,zh-CN")
+camoufox-cli --version              # Print version and exit
 ```
 
 ### `--persistent` in detail

@@ -91,6 +91,16 @@ def ensure_daemon(session: str, headed: bool, timeout: int, persistent: str | No
     spawn_daemon(session, headed, timeout, persistent, proxy, geoip, locale)
 
 
+def get_version() -> str:
+    """Version from installed package metadata; pyproject isn't shipped in the wheel."""
+    from importlib.metadata import version, PackageNotFoundError
+
+    try:
+        return version("camoufox-cli")
+    except PackageNotFoundError:
+        return "unknown"
+
+
 def list_sessions() -> list[str]:
     sessions = []
     try:
@@ -401,6 +411,12 @@ def _install_system_deps() -> None:
 
 def main():
     args = sys.argv[1:]
+
+    # Short-circuit before parse_args: --version has no command and needs no daemon.
+    if "--version" in args:
+        print(get_version())
+        return
+
     flags, command = parse_args(args)
 
     # Resolve default persistent path
@@ -526,6 +542,7 @@ Flags:
   --proxy <url>        Proxy server (e.g. http://host:port or https://host:443)
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
   --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")
+  --version            Print version and exit
 
 Config file:
   ~/.camoufox-cli/config.json sets defaults for the flags above (override the
