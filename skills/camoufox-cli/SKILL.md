@@ -354,6 +354,7 @@ camoufox-cli snapshot -i
 --proxy <url>          Proxy server (http:// or https://; auth: http://user:pass@host:port)
 --no-geoip             Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 --locale <tag>         Force browser locale (e.g. "en-US" or "en-US,zh-CN")
+--version              Print version and exit
 ```
 
 **Config file (optional).** To avoid repeating flags, set defaults in `~/.camoufox-cli/config.json` (override path with `$CAMOUFOX_CLI_CONFIG`): a `default` block applies to all sessions, and an optional `sessions.<name>` block layers extra overrides on top whenever you run `--session <name>` (the name is just whatever you pass to `--session` — sessions are never pre-registered). Settable keys: `proxy`, `locale`, `geoip`, `persistent` (`true`/`false`/path), `headed`, `timeout`, `json`. Command-line flags always win over the file. Config is read only when a session's daemon first launches.

@@ -174,6 +174,7 @@ camoufox-cli cookies export file.json     # Export cookies
 --proxy <url>          Proxy server (http:// or https://; auth: http://user:pass@host:port)
 --no-geoip             Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 --locale <tag>         Force browser locale (e.g. "en-US" or "en-US,zh-CN")
+--version              Print version and exit
 ```
 
 ## Config File

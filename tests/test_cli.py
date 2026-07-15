@@ -1,11 +1,12 @@
 """Tests for CLI argument parsing and command building."""
 
 import json
+import re
 
 import pytest
 
 from camoufox_cli import config
-from camoufox_cli.cli import build_command, parse_args, list_sessions, get_socket_path
+from camoufox_cli.cli import build_command, parse_args, list_sessions, get_socket_path, get_version
 
 
 @pytest.fixture(autouse=True)
@@ -280,6 +281,21 @@ class TestGetSocketPath:
 
     def test_custom_session(self):
         assert get_socket_path("my-session") == "/tmp/camoufox-cli-my-session.sock"
+
+
+class TestGetVersion:
+    def test_returns_semver(self):
+        # The package is installed in the dev/test venv, so metadata resolves.
+        assert re.match(r"^\d+\.\d+\.\d+", get_version())
+
+    def test_unknown_when_not_installed(self, monkeypatch):
+        import importlib.metadata
+
+        def _raise(name):
+            raise importlib.metadata.PackageNotFoundError(name)
+
+        monkeypatch.setattr(importlib.metadata, "version", _raise)
+        assert get_version() == "unknown"
 
 
 class TestConfigFile:
