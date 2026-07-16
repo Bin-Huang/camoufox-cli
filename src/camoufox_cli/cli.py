@@ -358,7 +358,7 @@ _APT_DEPS = [
     "libatk1.0-0", "libcairo-gobject2", "libcairo2", "libgdk-pixbuf-2.0-0",
     "libxrender1", "libfreetype6", "libfontconfig1", "libdbus-1-3",
     "libnss3", "libnspr4", "libatk-bridge2.0-0", "libdrm2", "libxkbcommon0",
-    "libatspi2.0-0", "libcups2", "libxshmfence1", "libgbm1",
+    "libatspi2.0-0", "libcups2", "libxshmfence1", "libgbm1", "libasound2",
 ]
 
 _DNF_DEPS = [
@@ -375,13 +375,37 @@ _YUM_DEPS = [
 ]
 
 
-def _resolve_apt_libasound() -> str:
-    """Newer Debian/Ubuntu renamed libasound2 to libasound2t64."""
+def _apt_installable(pkg: str) -> bool:
+    """True when a dry-run install of the package resolves."""
     result = subprocess.run(
-        ["dpkg", "-l", "libasound2t64"],
+        ["apt-get", "install", "-s", "-y", pkg],
         capture_output=True,
     )
-    return "libasound2t64" if result.returncode == 0 else "libasound2"
+    return result.returncode == 0
+
+
+def _resolve_apt_deps(deps: list[str]) -> list[str]:
+    """Map package names to what this system's apt actually knows.
+
+    Ubuntu 24.04's 64-bit time_t transition renamed many runtime libs with a
+    t64 suffix (libasound2 -> libasound2t64, libgtk-3-0 -> libgtk-3-0t64, ...)
+    WITHOUT a Provides for the old name, so installing the old names fails.
+    Fast path: if the plain list resolves as a whole (Debian, older Ubuntu),
+    use it. Otherwise resolve per package, preferring the plain name and
+    falling back to <name>t64. Unknown-either-way names are kept so apt
+    reports the real error instead of this helper guessing silently.
+    """
+    result = subprocess.run(
+        ["apt-get", "install", "-s", "-y", *deps],
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        return deps
+    return [
+        dep if _apt_installable(dep)
+        else (f"{dep}t64" if _apt_installable(f"{dep}t64") else dep)
+        for dep in deps
+    ]
 
 
 def _install_system_deps() -> None:
@@ -395,8 +419,9 @@ def _install_system_deps() -> None:
     print("[camoufox-cli] Installing system dependencies...", file=sys.stderr)
 
     if shutil.which("apt-get"):
-        deps = [*_APT_DEPS, _resolve_apt_libasound()]
         subprocess.run(["sudo", "apt-get", "update", "-y"], check=True)
+        # Resolve AFTER update: dry-run resolution needs a populated apt cache.
+        deps = _resolve_apt_deps(_APT_DEPS)
         subprocess.run(["sudo", "apt-get", "install", "-y", *deps], check=True)
     elif shutil.which("dnf"):
         subprocess.run(["sudo", "dnf", "install", "-y", *_DNF_DEPS], check=True)
