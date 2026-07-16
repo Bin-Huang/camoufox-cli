@@ -21,6 +21,9 @@ export class DaemonServer {
   // the server side lingering until we destroy it. Track live connections so
   // shutdown can drop them — otherwise server.close() never emits 'close'.
   private connections = new Set<net.Socket>();
+  // Connections currently processing a request; closeServer defers their
+  // destruction until the response has flushed.
+  private busy = new Set<net.Socket>();
 
   constructor(opts: { session?: string; headless?: boolean; timeout?: number; persistent?: string | null; proxy?: string | null; geoip?: boolean; locale?: string | null }) {
     this.session = opts.session ?? "default";
@@ -67,7 +70,7 @@ export class DaemonServer {
 
   private handleConnection(conn: net.Socket): void {
     this.connections.add(conn);
-    conn.on("close", () => this.connections.delete(conn));
+    conn.on("close", () => { this.connections.delete(conn); this.busy.delete(conn); });
 
     let data = "";
     let handled = false;
@@ -77,6 +80,10 @@ export class DaemonServer {
       const nlIdx = data.indexOf("\n");
       if (nlIdx < 0) return;
       handled = true;
+      // Mark mid-request: closeServer must let this connection's response
+      // flush instead of destroying it (its client would otherwise never
+      // learn that its command actually succeeded).
+      this.busy.add(conn);
 
       this.lastActivity = Date.now();
       const line = data.slice(0, nlIdx).trim();
@@ -97,10 +104,7 @@ export class DaemonServer {
         // tabs keep the daemon alive, so a non-final close just responds and
         // its connection cleans up on the normal path.
         if (command.action === "close" && !this.manager.isRunning) {
-          // Destroy the current connection only after its response has
-          // flushed, then drop the rest via closeServer().
-          conn.once("finish", () => conn.destroy());
-          this.closeServer(conn);
+          this.closeServer();
         }
       } catch (e: any) {
         conn.end(Buffer.from(JSON.stringify({ id: "?", success: false, error: String(e) }) + "\n"));
@@ -169,16 +173,26 @@ export class DaemonServer {
   }
 
   /**
-   * Stop the server and drop every lingering half-open connection so it can
-   * actually emit 'close'. Without destroying connections, allowHalfOpen keeps
-   * them alive and server.close() never completes, so the daemon hangs forever.
-   * Pass `except` to spare one connection (e.g. the in-flight close command,
-   * which destroys itself once its response has flushed).
+   * Stop the server and drop lingering connections so it can actually emit
+   * 'close'. Without destroying idle half-open connections, allowHalfOpen
+   * keeps them alive and server.close() never completes, so the daemon hangs
+   * forever. Connections that are mid-request (concurrent commands — e.g.
+   * several agents' closes racing the last-tab shutdown) are NOT cut: their
+   * work has already executed, so destroying them would eat the response and
+   * make the client report a failure for a command that succeeded. They are
+   * destroyed once their response flushes ('finish'), with a timeout backstop
+   * so a wedged handler can't keep the daemon alive forever.
    */
-  private closeServer(except?: net.Socket): void {
+  private closeServer(): void {
     this.server?.close();
     for (const c of this.connections) {
-      if (c !== except) c.destroy();
+      if (!this.busy.has(c) || c.writableFinished) {
+        c.destroy();
+        continue;
+      }
+      const backstop = setTimeout(() => c.destroy(), 10_000);
+      backstop.unref();
+      c.once("finish", () => { clearTimeout(backstop); c.destroy(); });
     }
   }
 

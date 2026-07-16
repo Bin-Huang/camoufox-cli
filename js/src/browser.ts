@@ -70,6 +70,8 @@ export class BrowserManager {
   private tabs = new Map<string, TabState>();
   private launching: Promise<void> | null = null;
   private recovering: Promise<void> | null = null;
+  // Serializes releaseTab calls; see releaseTab for why.
+  private releasing: Promise<void> = Promise.resolve();
   private persistent: string | null;
   private proxy: string | null;
   private geoip: boolean;
@@ -266,10 +268,23 @@ export class BrowserManager {
    * which would hijack another agent's tab), and when no live tab remains
    * the browser itself is closed. Idempotent: releasing a tab that has no
    * open page is a no-op, not an error.
+   *
+   * Releases are SERIALIZED through a promise chain. Without it, N
+   * concurrent closes interleave at the awaits: every one deletes its own
+   * map entry first, then every survivor scan sees an emptied map, so all
+   * N conclude they are the last tab out — the browser gets torn down N
+   * times and isRunning flips false for every in-flight close, which made
+   * the server destroy sibling connections before their responses flushed
+   * (their tabs were released, but the clients never got the receipt).
    */
-  async releaseTab(tab: string): Promise<void> {
-    // Remove the entry before any await so a concurrent release of another
-    // tab doesn't still count this one as live.
+  releaseTab(tab: string): Promise<void> {
+    const run = this.releasing.then(() => this.doReleaseTab(tab));
+    // Keep the chain usable even if a release fails.
+    this.releasing = run.catch(() => {});
+    return run;
+  }
+
+  private async doReleaseTab(tab: string): Promise<void> {
     const st = this.tabs.get(tab);
     this.tabs.delete(tab);
     if (st?.page && !st.page.isClosed()) {
