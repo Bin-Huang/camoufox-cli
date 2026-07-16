@@ -15,7 +15,12 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 dependencies = [
-    "camoufox[geoip]",
+    # Pin camoufox exactly: it is coupled to the playwright version and the
+    # Camoufox browser build, and its module layout shifts between releases
+    # (0.5.x dropped camoufox.locale, which install uses). An unpinned dep
+    # resolves to the latest on every fresh `pip install` and breaks without
+    # warning; keep it in lockstep with playwright below.
+    "camoufox[geoip]==0.4.11",
     "playwright==1.52.0",
     "Pillow",
 ]

@@ -1,8 +1,9 @@
 /** Browser manager: launches and manages Camoufox instance. */
 
-import { execFileSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
+import * as path from "node:path";
 import { Camoufox, launchOptions } from "camoufox-js";
+import { camoufoxPath } from "camoufox-js/dist/pkgman.js";
 import { firefox, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { ensureMmdb } from "./install.js";
 import { loadOrCreate, toLaunchOptions } from "./identity.js";
@@ -12,8 +13,22 @@ import { RefRegistry } from "./refs.js";
 const MAX_HISTORY = 200;
 
 function ensureBrowserInstalled(): void {
+  // Check in-process against the BUNDLED camoufox-js. The old
+  // `execFileSync("npx", ["camoufox-js", "path"])` probe was broken three
+  // ways: npx resolves camoufox-js from the caller's cwd, so under a global
+  // install it downloaded an arbitrary other version from the registry; that
+  // needs network at browser-launch time; and in a non-TTY daemon it could
+  // hang forever. camoufoxPath(false) has no download side effect — it
+  // throws when the browser dir is missing or its version is unsupported.
   try {
-    execFileSync("npx", ["camoufox-js", "path"], { stdio: "pipe" });
+    const dir = camoufoxPath(false).toString();
+    const launcher =
+      process.platform === "darwin"
+        ? path.join(dir, "Camoufox.app", "Contents", "MacOS", "camoufox")
+        : process.platform === "win32"
+          ? path.join(dir, "camoufox.exe")
+          : path.join(dir, "camoufox-bin");
+    if (!existsSync(launcher)) throw new Error("launcher missing");
   } catch {
     throw new Error(
       "Browser not found. Run `camoufox-cli install` to download it."

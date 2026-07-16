@@ -23,7 +23,7 @@ Tell your AI agent (e.g. OpenClaw):
 Or install manually:
 
 ```bash
-npm install -g camoufox-cli
+npm install -g camoufox-cli      # Requires Node.js 20.10+
 camoufox-cli install              # Download browser
 ```
 

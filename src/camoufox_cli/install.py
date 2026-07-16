@@ -32,12 +32,45 @@ def _assets_via_api(repo: str) -> list[dict]:
         timeout=20,
     )
     resp.raise_for_status()
-    return [asset for release in resp.json() for asset in release["assets"]]
+    # Skip prereleases/drafts like upstream's fetcher does: their assets can
+    # be experimental or incomplete uploads (e.g. missing the browser binary)
+    # and must never win over the newest stable release.
+    return [
+        asset
+        for release in resp.json()
+        if not (release.get("prerelease") or release.get("draft"))
+        for asset in release["assets"]
+    ]
+
+
+def _stable_tags(listing_html: str, repo: str) -> list[str]:
+    """Extract release tags from a listing page, skipping prereleases.
+
+    The scrape path cannot see the API's ``prerelease`` flag; on the listing
+    page a prerelease shows a "Pre-release" badge inside its section, i.e.
+    between its tag link and the next release's tag link. Scan tag links and
+    badges as one ordered stream and drop any tag followed by a badge.
+    """
+    token_re = re.compile(
+        rf'/{re.escape(repo)}/releases/tag/([^"<]+)|(Pre-release)'
+    )
+    tags: list[str] = []
+    prerelease: set[str] = set()
+    current: str | None = None
+    for m in token_re.finditer(listing_html):
+        tag = m.group(1)
+        if tag is not None:
+            current = tag
+            if tag not in tags:
+                tags.append(tag)
+        elif current is not None:
+            prerelease.add(current)
+    return [t for t in tags if t not in prerelease]
 
 
 def _assets_via_web(repo: str) -> Iterator[dict]:
     """Discover release assets by paging through github.com release pages,
-    newest release first. Lazy: stops requesting once the caller stops."""
+    newest stable release first. Lazy: stops requesting once the caller stops."""
     seen: set[str] = set()
     for page_num in count(1):
         listing = requests.get(
@@ -46,17 +79,20 @@ def _assets_via_web(repo: str) -> Iterator[dict]:
             timeout=20,
         )
         listing.raise_for_status()
-        tags = [
-            tag
-            for tag in dict.fromkeys(
-                re.findall(rf'/{re.escape(repo)}/releases/tag/([^"<]+)', listing.text)
-            )
-            if tag not in seen
-        ]
-        if not tags:
+        # Pagination must advance on ANY new tag (a page holding only
+        # prereleases is not the end of the listing), while assets are
+        # fetched only for the stable ones.
+        page_tags = dict.fromkeys(
+            re.findall(rf'/{re.escape(repo)}/releases/tag/([^"<]+)', listing.text)
+        )
+        new_tags = [tag for tag in page_tags if tag not in seen]
+        if not new_tags:
             return
-        seen.update(tags)
-        for tag in tags:
+        seen.update(new_tags)
+        stable = set(_stable_tags(listing.text, repo))
+        for tag in new_tags:
+            if tag not in stable:
+                continue
             page = requests.get(
                 f"https://github.com/{repo}/releases/expanded_assets/{tag}",
                 headers=_HEADERS,
@@ -114,7 +150,7 @@ def ensure_mmdb() -> None:
 
 def install_browser() -> None:
     """Download and install the Camoufox browser and GeoIP database."""
-    from camoufox.pkgman import CamoufoxFetcher
+    from camoufox.pkgman import CamoufoxFetcher, launch_path
 
     class ResilientFetcher(CamoufoxFetcher):
         def get_asset(self):
@@ -124,4 +160,8 @@ def install_browser() -> None:
             self.missing_asset_error()
 
     ResilientFetcher().install()
+    # A broken release asset (e.g. one missing the browser binary) would
+    # otherwise "install" successfully, write version.json, and mask the
+    # failure forever. Fail loudly here instead of at the first `open`.
+    launch_path()  # raises CamoufoxNotInstalled if the executable is absent
     ensure_mmdb()
