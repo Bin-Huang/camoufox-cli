@@ -502,8 +502,23 @@ def main():
             return
         except Exception as e:
             last_err = str(e)
+            # close is idempotent: if the daemon is gone (socket removed),
+            # there is nothing left to close — that IS success. This is the
+            # receipt for a close that raced the last-tab shutdown: the daemon
+            # may exit after releasing our tab but before responding.
+            if action == "close" and not os.path.exists(sock_path):
+                if flags["json"]:
+                    print(json.dumps({"id": "r1", "success": True, "data": {"closed": True}}))
+                return
             if attempt < 4:
                 time.sleep(0.2 * (attempt + 1))
+
+    # Same idempotent-close check once more: the daemon may have finished
+    # unlinking its socket only while we were burning the retry budget.
+    if action == "close" and not os.path.exists(sock_path):
+        if flags["json"]:
+            print(json.dumps({"id": "r1", "success": True, "data": {"closed": True}}))
+        return
 
     print(f"Error: Failed to connect to daemon after 5 attempts: {last_err}", file=sys.stderr)
     sys.exit(1)
