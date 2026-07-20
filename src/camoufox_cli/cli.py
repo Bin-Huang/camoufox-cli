@@ -408,6 +408,18 @@ def _resolve_apt_deps(deps: list[str]) -> list[str]:
     ]
 
 
+def _run_as_root(argv: list[str]) -> None:
+    """Run a privileged package-manager command.
+
+    Prefer bare invocation when already root (Docker/CI images rarely ship
+    sudo). Fall back to sudo for unprivileged interactive installs.
+    """
+    if os.geteuid() == 0:
+        subprocess.run(argv, check=True)
+    else:
+        subprocess.run(["sudo", *argv], check=True)
+
+
 def _install_system_deps() -> None:
     import platform
     import shutil
@@ -419,14 +431,14 @@ def _install_system_deps() -> None:
     print("[camoufox-cli] Installing system dependencies...", file=sys.stderr)
 
     if shutil.which("apt-get"):
-        subprocess.run(["sudo", "apt-get", "update", "-y"], check=True)
+        _run_as_root(["apt-get", "update", "-y"])
         # Resolve AFTER update: dry-run resolution needs a populated apt cache.
         deps = _resolve_apt_deps(_APT_DEPS)
-        subprocess.run(["sudo", "apt-get", "install", "-y", *deps], check=True)
+        _run_as_root(["apt-get", "install", "-y", *deps])
     elif shutil.which("dnf"):
-        subprocess.run(["sudo", "dnf", "install", "-y", *_DNF_DEPS], check=True)
+        _run_as_root(["dnf", "install", "-y", *_DNF_DEPS])
     elif shutil.which("yum"):
-        subprocess.run(["sudo", "yum", "install", "-y", *_YUM_DEPS], check=True)
+        _run_as_root(["yum", "install", "-y", *_YUM_DEPS])
     else:
         print("[camoufox-cli] Could not detect a supported package manager (apt-get, dnf, yum).", file=sys.stderr)
         sys.exit(1)

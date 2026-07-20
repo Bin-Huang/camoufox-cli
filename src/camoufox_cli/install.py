@@ -148,9 +148,22 @@ def ensure_mmdb() -> None:
         print(f"[camoufox-cli] GeoIP database download failed ({e}).", file=sys.stderr)
 
 
+def _browser_present() -> bool:
+    """True when the browser's launch executable is actually on disk."""
+    from camoufox.exceptions import CamoufoxNotInstalled
+    from camoufox.pkgman import launch_path
+
+    try:
+        launch_path()
+        return True
+    except (CamoufoxNotInstalled, FileNotFoundError):
+        return False
+
+
 def install_browser() -> None:
-    """Download and install the Camoufox browser and GeoIP database."""
-    from camoufox.pkgman import CamoufoxFetcher, launch_path
+    """Download and install the Camoufox browser, GeoIP database and addons."""
+    from camoufox.addons import DefaultAddons, maybe_download_addons
+    from camoufox.pkgman import CamoufoxFetcher, installed_verstr, launch_path
 
     class ResilientFetcher(CamoufoxFetcher):
         def get_asset(self):
@@ -159,9 +172,25 @@ def install_browser() -> None:
                     return data
             self.missing_asset_error()
 
-    ResilientFetcher().install()
-    # A broken release asset (e.g. one missing the browser binary) would
-    # otherwise "install" successfully, write version.json, and mask the
-    # failure forever. Fail loudly here instead of at the first `open`.
-    launch_path()  # raises CamoufoxNotInstalled if the executable is absent
+    fetcher = ResilientFetcher()
+    # Match the JS installer: skip the ~600MB download when version.json
+    # already matches AND the binary is actually present. Without the
+    # presence check a broken install (version file, no binary) would be
+    # masked forever; without the version check every `install` re-downloads.
+    try:
+        installed = installed_verstr()
+    except Exception:
+        installed = None
+    if installed == fetcher.verstr and _browser_present():
+        print(f"[camoufox-cli] Camoufox v{installed} is already up to date.", file=sys.stderr)
+    else:
+        fetcher.install()
+        # A broken release asset (e.g. one missing the browser binary) would
+        # otherwise "install" successfully, write version.json, and mask the
+        # failure forever. Fail loudly here instead of at the first `open`.
+        launch_path()  # raises CamoufoxNotInstalled if the executable is absent
+
     ensure_mmdb()
+    # Default UBO addon — same as `camoufox fetch`. Without this, first open
+    # either downloads lazily or fails if an empty addons/ dir was left behind.
+    maybe_download_addons(list(DefaultAddons))
