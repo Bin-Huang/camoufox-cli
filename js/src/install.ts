@@ -175,5 +175,8 @@ export async function installBrowser(): Promise<void> {
   }
 
   await ensureMmdb();
-  maybeDownloadAddons(DefaultAddons);
+  // Must await: otherwise `install` can return (or crash on --with-deps)
+  // while the UBO extract is still in flight, leaving an empty addons/UBO
+  // dir that later open() rejects as "manifest.json is missing".
+  await maybeDownloadAddons(DefaultAddons);
 }

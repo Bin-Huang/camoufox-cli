@@ -382,6 +382,19 @@ function resolveAptDeps(deps: string[]): string[] {
   }
 }
 
+/** Run a privileged package-manager command.
+ *
+ * Prefer bare invocation when already root (Docker/CI images rarely ship
+ * sudo). Fall back to sudo for unprivileged interactive installs.
+ */
+function runAsRoot(argv: string[]): void {
+  if (typeof process.getuid === "function" && process.getuid() === 0) {
+    execFileSync(argv[0], argv.slice(1), { stdio: "inherit" });
+    return;
+  }
+  execFileSync("sudo", argv, { stdio: "inherit" });
+}
+
 function installSystemDeps(): void {
   if (os.platform() !== "linux") {
     process.stderr.write("[camoufox-cli] System dependencies are only needed on Linux, skipping.\n");
@@ -391,14 +404,14 @@ function installSystemDeps(): void {
   process.stderr.write("[camoufox-cli] Installing system dependencies...\n");
 
   if (fs.existsSync("/usr/bin/apt-get")) {
-    execFileSync("sudo", ["apt-get", "update", "-y"], { stdio: "inherit" });
+    runAsRoot(["apt-get", "update", "-y"]);
     // Resolve AFTER update: dry-run resolution needs a populated apt cache.
     const deps = resolveAptDeps(APT_DEPS);
-    execFileSync("sudo", ["apt-get", "install", "-y", ...deps], { stdio: "inherit" });
+    runAsRoot(["apt-get", "install", "-y", ...deps]);
   } else if (fs.existsSync("/usr/bin/dnf")) {
-    execFileSync("sudo", ["dnf", "install", "-y", ...DNF_DEPS], { stdio: "inherit" });
+    runAsRoot(["dnf", "install", "-y", ...DNF_DEPS]);
   } else if (fs.existsSync("/usr/bin/yum")) {
-    execFileSync("sudo", ["yum", "install", "-y", ...YUM_DEPS], { stdio: "inherit" });
+    runAsRoot(["yum", "install", "-y", ...YUM_DEPS]);
   } else {
     process.stderr.write("[camoufox-cli] Could not detect a supported package manager (apt-get, dnf, yum).\n");
     process.exit(1);
