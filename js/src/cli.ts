@@ -493,10 +493,24 @@ async function main() {
       return;
     } catch (e: any) {
       lastErr = e.message || String(e);
+      // close is idempotent: if the daemon is gone (socket removed), there is
+      // nothing left to close — that IS success. This is the receipt for a
+      // close that raced the last-tab shutdown: the daemon may exit after
+      // releasing our tab but before our response could be delivered.
+      if (action === "close" && !fs.existsSync(sockPath)) {
+        if (flags.json) console.log(JSON.stringify({ id: "r1", success: true, data: { closed: true } }));
+        return;
+      }
       if (attempt < 4) await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
     }
   }
 
+  // Same idempotent-close check once more: the daemon may have finished
+  // unlinking its socket only while we were burning the retry budget.
+  if (action === "close" && !fs.existsSync(sockPath)) {
+    if (flags.json) console.log(JSON.stringify({ id: "r1", success: true, data: { closed: true } }));
+    return;
+  }
   process.stderr.write(`Error: Failed to connect to daemon after 5 attempts: ${lastErr}\n`);
   process.exit(1);
 }

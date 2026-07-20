@@ -29,6 +29,30 @@ describe("BrowserManager", () => {
     expect(launches).toBe(2);
   });
 
+  it("concurrent releases: only the true last tab out closes the browser", async () => {
+    const manager = new BrowserManager();
+    let closes = 0;
+    vi.spyOn(manager, "close").mockImplementation(async () => { closes++; });
+    // Fake pages that take a moment to close, forcing the releases to
+    // interleave at the await — the exact shape of the production race.
+    const mkTab = () => ({
+      page: { isClosed: () => false, close: () => new Promise((r) => setTimeout(r, 20)) },
+    });
+    (manager as any).tabs.set("a", mkTab());
+    (manager as any).tabs.set("b", mkTab());
+    (manager as any).tabs.set("c", mkTab());
+
+    await Promise.all([
+      manager.releaseTab("a"),
+      manager.releaseTab("b"),
+      manager.releaseTab("c"),
+    ]);
+    // Unserialized, every release sees an emptied map and all three "close
+    // the browser"; serialized, only the genuine last one does.
+    expect(closes).toBe(1);
+    expect((manager as any).tabs.size).toBe(0);
+  });
+
   it("getPage rejects when not launched", async () => {
     const manager = new BrowserManager();
     await expect(manager.getPage()).rejects.toThrow("not launched");

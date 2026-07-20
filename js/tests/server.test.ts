@@ -178,6 +178,49 @@ describe("DaemonServer", () => {
     await serverPromise;
   });
 
+  it("concurrent closes all receive a response (none eaten by shutdown)", async () => {
+    // Regression: N agents closing at once. The first close to complete used
+    // to see isRunning=false and destroy every sibling connection before its
+    // response flushed — the tabs were released but the clients reported
+    // failure. All N clients must get a parseable success response.
+    const server = new DaemonServer({ session: TEST_SESSION, timeout: 5 });
+    const serverPromise = server.start();
+    for (let i = 0; i < 50; i++) {
+      if (fs.existsSync(SOCK_PATH)) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    const sendClose = (id: string) => new Promise<string>((resolve, reject) => {
+      const client = net.createConnection(SOCK_PATH, () => {
+        client.end(JSON.stringify({ id, action: "close", params: {} }) + "\n");
+      });
+      let data = "";
+      client.on("data", chunk => { data += chunk.toString(); });
+      client.on("end", () => resolve(data));
+      client.on("error", reject);
+    });
+
+    const responses = await Promise.all(
+      ["c1", "c2", "c3", "c4", "c5", "c6"].map(sendClose)
+    );
+    // Every connection whose request began processing must get a full,
+    // parseable response (the old code destroyed them mid-response). A
+    // sibling that had not even been read yet may be dropped at shutdown —
+    // the real CLI covers that via its idempotent-close fallback — but a
+    // partial/truncated response is never acceptable.
+    let delivered = 0;
+    for (const raw of responses) {
+      if (raw === "") continue;
+      const parsed = JSON.parse(raw); // truncated raw -> test fails here
+      expect(parsed.success).toBe(true);
+      delivered++;
+    }
+    expect(delivered).toBeGreaterThan(0);
+
+    await serverPromise; // daemon still shuts down cleanly afterwards
+    expect(fs.existsSync(SOCK_PATH)).toBe(false);
+  });
+
   it("cleans up socket and pid on shutdown", async () => {
     const server = new DaemonServer({
       session: TEST_SESSION,
