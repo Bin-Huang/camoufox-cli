@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 
+from .config import load_defaults
+
 
 SOCKET_PREFIX = "/tmp/camoufox-cli-"
 
@@ -66,20 +68,37 @@ def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | Non
 def ensure_daemon(session: str, headed: bool, timeout: int, persistent: str | None, proxy: str | None = None, geoip: bool = True, locale: str | None = None) -> None:
     sock_path = get_socket_path(session)
     if os.path.exists(sock_path):
-        # Verify daemon is actually alive by trying to connect
-        try:
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            s.settimeout(2)
-            s.connect(sock_path)
-            s.close()
-            return
-        except (ConnectionRefusedError, OSError):
-            # Stale socket from a dead daemon — clean up
+        # Verify the daemon is actually alive. Retry a few times before giving
+        # up: a momentarily busy daemon (accept backlog full while it handles a
+        # slow command) can transiently refuse a connect, and we must not delete
+        # a live daemon's socket and respawn — the respawn would lose the pid
+        # claim and exit, leaving the session unreachable.
+        for attempt in range(3):
             try:
-                os.unlink(sock_path)
-            except FileNotFoundError:
-                pass
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                s.settimeout(2)
+                s.connect(sock_path)
+                s.close()
+                return
+            except (ConnectionRefusedError, OSError):
+                if attempt < 2:
+                    time.sleep(0.2 * (attempt + 1))
+        # Consistently unreachable — treat as a stale socket from a dead daemon.
+        try:
+            os.unlink(sock_path)
+        except FileNotFoundError:
+            pass
     spawn_daemon(session, headed, timeout, persistent, proxy, geoip, locale)
+
+
+def get_version() -> str:
+    """Version from installed package metadata; pyproject isn't shipped in the wheel."""
+    from importlib.metadata import version, PackageNotFoundError
+
+    try:
+        return version("camoufox-cli")
+    except PackageNotFoundError:
+        return "unknown"
 
 
 def list_sessions() -> list[str]:
@@ -95,8 +114,15 @@ def list_sessions() -> list[str]:
 
 
 def parse_args(args: list[str]) -> tuple[dict, dict]:
-    """Parse CLI args into (flags, command). Returns (flags_dict, command_json)."""
-    flags = {"session": "default", "headed": False, "timeout": 1800, "json": False, "persistent": None, "proxy": None, "geoip": True, "locale": None}
+    """Parse CLI args into (flags, command). Returns (flags_dict, command_json).
+
+    Flag precedence: command line > config file (per-session block, then the
+    ``default`` block) > built-in defaults. Only flags explicitly passed on the
+    command line are collected here, so they always win over config; see
+    ``config.load_defaults``.
+    """
+    builtin = {"session": "default", "tab": "default", "headed": False, "timeout": 1800, "json": False, "persistent": None, "proxy": None, "geoip": True, "locale": None}
+    cli: dict = {}
     rest = []
 
     i = 0
@@ -106,38 +132,44 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
             if i >= len(args):
                 print("Error: --session requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["session"] = args[i]
+            cli["session"] = args[i]
+        elif args[i] == "--tab":
+            i += 1
+            if i >= len(args):
+                print("Error: --tab requires a value", file=sys.stderr)
+                sys.exit(1)
+            cli["tab"] = args[i]
         elif args[i] == "--headed":
-            flags["headed"] = True
+            cli["headed"] = True
         elif args[i] == "--timeout":
             i += 1
             if i >= len(args):
                 print("Error: --timeout requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["timeout"] = int(args[i])
+            cli["timeout"] = int(args[i])
         elif args[i] == "--json":
-            flags["json"] = True
+            cli["json"] = True
         elif args[i] == "--persistent":
             # Optional value: if next arg looks like a path, use it; otherwise use default
             if i + 1 < len(args) and ("/" in args[i + 1] or args[i + 1].startswith((".", "~"))):
                 i += 1
-                flags["persistent"] = args[i]
+                cli["persistent"] = args[i]
             else:
-                flags["persistent"] = ""
+                cli["persistent"] = ""
         elif args[i] == "--proxy":
             i += 1
             if i >= len(args):
                 print("Error: --proxy requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["proxy"] = args[i]
+            cli["proxy"] = args[i]
         elif args[i] == "--no-geoip":
-            flags["geoip"] = False
+            cli["geoip"] = False
         elif args[i] == "--locale":
             i += 1
             if i >= len(args):
                 print("Error: --locale requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["locale"] = args[i]
+            cli["locale"] = args[i]
         else:
             rest.append(args[i])
         i += 1
@@ -146,8 +178,14 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
         print(USAGE, file=sys.stderr)
         sys.exit(1)
 
+    # session selects which config block applies, so it comes only from the CLI.
+    session = cli.get("session", builtin["session"])
+    flags = {**builtin, **load_defaults(session), **cli}
+
     action = rest[0]
     cmd = build_command(action, rest)
+    # Route the command to a named tab within the session's shared browser.
+    cmd["tab"] = flags["tab"]
     return flags, cmd
 
 
@@ -252,9 +290,6 @@ def build_command(action: str, rest: list[str]) -> dict:
         case "switch":
             index = _require(rest, 1, "Usage: camoufox-cli switch <tab-index>")
             return {"id": "r1", "action": "switch", "params": {"index": int(index)}}
-        case "close-tab":
-            return {"id": "r1", "action": "close-tab", "params": {}}
-
         # Install
         case "install":
             return {"id": "r1", "action": "install", "params": {"with_deps": "--with-deps" in rest}}
@@ -323,7 +358,7 @@ _APT_DEPS = [
     "libatk1.0-0", "libcairo-gobject2", "libcairo2", "libgdk-pixbuf-2.0-0",
     "libxrender1", "libfreetype6", "libfontconfig1", "libdbus-1-3",
     "libnss3", "libnspr4", "libatk-bridge2.0-0", "libdrm2", "libxkbcommon0",
-    "libatspi2.0-0", "libcups2", "libxshmfence1", "libgbm1",
+    "libatspi2.0-0", "libcups2", "libxshmfence1", "libgbm1", "libasound2",
 ]
 
 _DNF_DEPS = [
@@ -340,13 +375,49 @@ _YUM_DEPS = [
 ]
 
 
-def _resolve_apt_libasound() -> str:
-    """Newer Debian/Ubuntu renamed libasound2 to libasound2t64."""
+def _apt_installable(pkg: str) -> bool:
+    """True when a dry-run install of the package resolves."""
     result = subprocess.run(
-        ["dpkg", "-l", "libasound2t64"],
+        ["apt-get", "install", "-s", "-y", pkg],
         capture_output=True,
     )
-    return "libasound2t64" if result.returncode == 0 else "libasound2"
+    return result.returncode == 0
+
+
+def _resolve_apt_deps(deps: list[str]) -> list[str]:
+    """Map package names to what this system's apt actually knows.
+
+    Ubuntu 24.04's 64-bit time_t transition renamed many runtime libs with a
+    t64 suffix (libasound2 -> libasound2t64, libgtk-3-0 -> libgtk-3-0t64, ...)
+    WITHOUT a Provides for the old name, so installing the old names fails.
+    Fast path: if the plain list resolves as a whole (Debian, older Ubuntu),
+    use it. Otherwise resolve per package, preferring the plain name and
+    falling back to <name>t64. Unknown-either-way names are kept so apt
+    reports the real error instead of this helper guessing silently.
+    """
+    result = subprocess.run(
+        ["apt-get", "install", "-s", "-y", *deps],
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        return deps
+    return [
+        dep if _apt_installable(dep)
+        else (f"{dep}t64" if _apt_installable(f"{dep}t64") else dep)
+        for dep in deps
+    ]
+
+
+def _run_as_root(argv: list[str]) -> None:
+    """Run a privileged package-manager command.
+
+    Prefer bare invocation when already root (Docker/CI images rarely ship
+    sudo). Fall back to sudo for unprivileged interactive installs.
+    """
+    if os.geteuid() == 0:
+        subprocess.run(argv, check=True)
+    else:
+        subprocess.run(["sudo", *argv], check=True)
 
 
 def _install_system_deps() -> None:
@@ -360,13 +431,14 @@ def _install_system_deps() -> None:
     print("[camoufox-cli] Installing system dependencies...", file=sys.stderr)
 
     if shutil.which("apt-get"):
-        deps = [*_APT_DEPS, _resolve_apt_libasound()]
-        subprocess.run(["sudo", "apt-get", "update", "-y"], check=True)
-        subprocess.run(["sudo", "apt-get", "install", "-y", *deps], check=True)
+        _run_as_root(["apt-get", "update", "-y"])
+        # Resolve AFTER update: dry-run resolution needs a populated apt cache.
+        deps = _resolve_apt_deps(_APT_DEPS)
+        _run_as_root(["apt-get", "install", "-y", *deps])
     elif shutil.which("dnf"):
-        subprocess.run(["sudo", "dnf", "install", "-y", *_DNF_DEPS], check=True)
+        _run_as_root(["dnf", "install", "-y", *_DNF_DEPS])
     elif shutil.which("yum"):
-        subprocess.run(["sudo", "yum", "install", "-y", *_YUM_DEPS], check=True)
+        _run_as_root(["yum", "install", "-y", *_YUM_DEPS])
     else:
         print("[camoufox-cli] Could not detect a supported package manager (apt-get, dnf, yum).", file=sys.stderr)
         sys.exit(1)
@@ -376,6 +448,12 @@ def _install_system_deps() -> None:
 
 def main():
     args = sys.argv[1:]
+
+    # Short-circuit before parse_args: --version has no command and needs no daemon.
+    if "--version" in args:
+        print(get_version())
+        return
+
     flags, command = parse_args(args)
 
     # Resolve default persistent path
@@ -387,9 +465,8 @@ def main():
     # Client-side: install
     if action == "install":
         print("[camoufox-cli] Downloading browser...", file=sys.stderr)
-        from camoufox.pkgman import CamoufoxFetcher
-        fetcher = CamoufoxFetcher()
-        fetcher.install()
+        from .install import install_browser
+        install_browser()
         print("[camoufox-cli] Browser installed.", file=sys.stderr)
         if command.get("params", {}).get("with_deps"):
             _install_system_deps()
@@ -413,7 +490,8 @@ def main():
         if not sessions:
             print("No active sessions.")
             return
-        close_cmd = {"id": "r1", "action": "close", "params": {}}
+        # Force: tear each session's browser down regardless of open tabs.
+        close_cmd = {"id": "r1", "action": "close", "params": {"force": True}}
         for session in sessions:
             sock_path = get_socket_path(session)
             try:
@@ -436,8 +514,23 @@ def main():
             return
         except Exception as e:
             last_err = str(e)
+            # close is idempotent: if the daemon is gone (socket removed),
+            # there is nothing left to close — that IS success. This is the
+            # receipt for a close that raced the last-tab shutdown: the daemon
+            # may exit after releasing our tab but before responding.
+            if action == "close" and not os.path.exists(sock_path):
+                if flags["json"]:
+                    print(json.dumps({"id": "r1", "success": True, "data": {"closed": True}}))
+                return
             if attempt < 4:
                 time.sleep(0.2 * (attempt + 1))
+
+    # Same idempotent-close check once more: the daemon may have finished
+    # unlinking its socket only while we were burning the retry budget.
+    if action == "close" and not os.path.exists(sock_path):
+        if flags["json"]:
+            print(json.dumps({"id": "r1", "success": True, "data": {"closed": True}}))
+        return
 
     print(f"Error: Failed to connect to daemon after 5 attempts: {last_err}", file=sys.stderr)
     sys.exit(1)
@@ -453,7 +546,8 @@ Navigation:
   reload                  Reload page
   url                     Print current URL
   title                   Print page title
-  close [--all]           Close browser and daemon (--all: all sessions)
+  close [--all]           Close your tab; browser and daemon exit when the
+                          last tab closes (--all: force-close all sessions)
 
 Snapshot:
   snapshot [-i] [-s sel]  Aria tree (-i interactive, -s scoped)
@@ -480,7 +574,6 @@ Scroll & Wait:
 Tabs:
   tabs                    List open tabs
   switch <index>          Switch to tab
-  close-tab               Close current tab
 
 Session:
   sessions                List active sessions
@@ -491,10 +584,19 @@ Setup:
 
 Flags:
   --session <name>     Session name (default: "default")
+  --tab <name>         Named tab within the session's shared browser: same
+                       fingerprint and cookies/login, independent page/refs/
+                       history. Give each concurrent agent its own tab name.
   --headed             Show browser window
   --timeout <secs>     Daemon idle timeout (default: 1800)
   --json               Output as JSON
   --persistent [path]  Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
   --proxy <url>        Proxy server (e.g. http://host:port or https://host:443)
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
-  --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")"""
+  --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")
+  --version            Print version and exit
+
+Config file:
+  ~/.camoufox-cli/config.json sets defaults for the flags above (override the
+  path with $CAMOUFOX_CLI_CONFIG). Command-line flags always take precedence.
+  Use a "default" block plus optional per-session blocks under "sessions"."""

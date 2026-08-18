@@ -1,8 +1,24 @@
 """Tests for CLI argument parsing and command building."""
 
+import json
+import re
+
 import pytest
 
-from camoufox_cli.cli import build_command, parse_args, list_sessions, get_socket_path
+from camoufox_cli import config
+from camoufox_cli.cli import build_command, parse_args, list_sessions, get_socket_path, get_version
+
+
+@pytest.fixture(autouse=True)
+def config_file(monkeypatch, tmp_path):
+    """Isolate config: point CONFIG_PATH at a temp file (absent unless a test writes it).
+
+    Without this, parse_args/load_defaults would read the developer's real
+    ~/.camoufox-cli/config.json and make these tests machine-dependent.
+    """
+    path = tmp_path / "config.json"
+    monkeypatch.setattr(config, "CONFIG_PATH", str(path))
+    return path
 
 
 class TestBuildCommand:
@@ -145,10 +161,6 @@ class TestBuildCommand:
         cmd = build_command("switch", ["switch", "2"])
         assert cmd["params"]["index"] == 2
 
-    def test_close_tab(self):
-        cmd = build_command("close-tab", ["close-tab"])
-        assert cmd["action"] == "close-tab"
-
     # --- Cookies ---
     def test_cookies_list(self):
         cmd = build_command("cookies", ["cookies"])
@@ -196,6 +208,20 @@ class TestParseArgs:
     def test_session_flag(self):
         flags, cmd = parse_args(["--session", "mysession", "open", "https://example.com"])
         assert flags["session"] == "mysession"
+
+    def test_tab_default(self):
+        flags, cmd = parse_args(["open", "https://example.com"])
+        assert flags["tab"] == "default"
+        assert cmd["tab"] == "default"
+
+    def test_tab_flag(self):
+        flags, cmd = parse_args(["--tab", "agent1", "open", "https://example.com"])
+        assert flags["tab"] == "agent1"
+        assert cmd["tab"] == "agent1"
+
+    def test_missing_tab_value(self):
+        with pytest.raises(SystemExit):
+            parse_args(["--tab"])
 
     def test_headed_flag(self):
         flags, cmd = parse_args(["--headed", "open", "https://example.com"])
@@ -255,3 +281,138 @@ class TestGetSocketPath:
 
     def test_custom_session(self):
         assert get_socket_path("my-session") == "/tmp/camoufox-cli-my-session.sock"
+
+
+class TestGetVersion:
+    def test_returns_semver(self):
+        # The package is installed in the dev/test venv, so metadata resolves.
+        assert re.match(r"^\d+\.\d+\.\d+", get_version())
+
+    def test_unknown_when_not_installed(self, monkeypatch):
+        import importlib.metadata
+
+        def _raise(name):
+            raise importlib.metadata.PackageNotFoundError(name)
+
+        monkeypatch.setattr(importlib.metadata, "version", _raise)
+        assert get_version() == "unknown"
+
+
+class TestConfigFile:
+    # --- config.load_defaults ---
+    def test_absent_file(self):
+        assert config.load_defaults("default") == {}
+
+    def test_default_block(self, config_file):
+        config_file.write_text(json.dumps({"default": {"timeout": 60, "headed": True}}))
+        out = config.load_defaults("default")
+        assert out["timeout"] == 60
+        assert out["headed"] is True
+
+    def test_session_overrides_default(self, config_file):
+        config_file.write_text(json.dumps({
+            "default": {"locale": "en-US", "timeout": 60},
+            "sessions": {"work": {"locale": "zh-CN"}},
+        }))
+        out = config.load_defaults("work")
+        assert out["locale"] == "zh-CN"   # session block wins
+        assert out["timeout"] == 60        # inherited from default block
+
+    def test_unknown_session_uses_default_block(self, config_file):
+        config_file.write_text(json.dumps({
+            "default": {"locale": "en-US"},
+            "sessions": {"work": {"locale": "zh-CN"}},
+        }))
+        assert config.load_defaults("other")["locale"] == "en-US"
+
+    def test_session_key_excluded(self, config_file):
+        config_file.write_text(json.dumps({"default": {"session": "ignored", "proxy": "http://h:1"}}))
+        out = config.load_defaults("default")
+        assert "session" not in out
+        assert out["proxy"] == "http://h:1"
+
+    def test_unknown_key_ignored(self, config_file):
+        config_file.write_text(json.dumps({"default": {"bogus": 1, "headed": True}}))
+        out = config.load_defaults("default")
+        assert "bogus" not in out
+        assert out["headed"] is True
+
+    def test_persistent_true_becomes_sentinel(self, config_file):
+        config_file.write_text(json.dumps({"default": {"persistent": True}}))
+        assert config.load_defaults("default")["persistent"] == ""
+
+    def test_persistent_false_becomes_none(self, config_file):
+        config_file.write_text(json.dumps({"default": {"persistent": False}}))
+        assert config.load_defaults("default")["persistent"] is None
+
+    def test_persistent_path_kept(self, config_file):
+        config_file.write_text(json.dumps({"default": {"persistent": "/tmp/p"}}))
+        assert config.load_defaults("default")["persistent"] == "/tmp/p"
+
+    def test_persistent_invalid_type_dropped(self, config_file):
+        # A number would crash subprocess launch; it must be dropped, not passed through.
+        config_file.write_text(json.dumps({"default": {"persistent": 123, "headed": True}}))
+        out = config.load_defaults("default")
+        assert "persistent" not in out
+        assert out["headed"] is True
+
+    def test_persistent_null_disables(self, config_file):
+        config_file.write_text(json.dumps({"default": {"persistent": None}}))
+        assert config.load_defaults("default").get("persistent") is None
+
+    def test_invalid_timeout_dropped(self, config_file):
+        config_file.write_text(json.dumps({"default": {"timeout": "abc", "headed": True}}))
+        out = config.load_defaults("default")
+        assert "timeout" not in out
+        assert out["headed"] is True
+
+    def test_timeout_bool_dropped(self, config_file):
+        # bool is an int subclass in Python — make sure True isn't taken as 1.
+        config_file.write_text(json.dumps({"default": {"timeout": True}}))
+        assert "timeout" not in config.load_defaults("default")
+
+    def test_timeout_float_truncated(self, config_file):
+        config_file.write_text(json.dumps({"default": {"timeout": 3600.9}}))
+        assert config.load_defaults("default")["timeout"] == 3600
+
+    def test_proxy_invalid_type_dropped(self, config_file):
+        # A non-string proxy would crash subprocess launch; it must be dropped.
+        config_file.write_text(json.dumps({"default": {"proxy": 123, "locale": "en-US"}}))
+        out = config.load_defaults("default")
+        assert "proxy" not in out
+        assert out["locale"] == "en-US"
+
+    def test_bool_field_wrong_type_dropped(self, config_file):
+        # "false" is a truthy string — must be dropped, not silently taken as True.
+        config_file.write_text(json.dumps({"default": {"headed": "false", "geoip": "no"}}))
+        out = config.load_defaults("default")
+        assert "headed" not in out
+        assert "geoip" not in out
+
+    def test_malformed_json_ignored(self, config_file):
+        config_file.write_text("{not valid json")
+        assert config.load_defaults("default") == {}
+
+    def test_non_object_top_level_ignored(self, config_file):
+        config_file.write_text(json.dumps([1, 2, 3]))
+        assert config.load_defaults("default") == {}
+
+    # --- parse_args integration (precedence: CLI > config > built-in) ---
+    def test_config_supplies_defaults(self, config_file):
+        config_file.write_text(json.dumps({"default": {"proxy": "http://h:1", "headed": True}}))
+        flags, _ = parse_args(["open", "https://example.com"])
+        assert flags["proxy"] == "http://h:1"
+        assert flags["headed"] is True
+
+    def test_cli_overrides_config(self, config_file):
+        config_file.write_text(json.dumps({"default": {"timeout": 60}}))
+        flags, _ = parse_args(["--timeout", "999", "open", "https://example.com"])
+        assert flags["timeout"] == 999
+
+    def test_config_session_block_applies(self, config_file):
+        config_file.write_text(json.dumps({"sessions": {"work": {"locale": "zh-CN"}}}))
+        flags, _ = parse_args(["--session", "work", "open", "https://example.com"])
+        assert flags["locale"] == "zh-CN"
+        # A different session doesn't pick up the "work" block.
+        flags2, _ = parse_args(["open", "https://example.com"])
+        assert flags2["locale"] is None

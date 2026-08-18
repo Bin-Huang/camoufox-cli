@@ -1,6 +1,6 @@
 {
   "name": "camoufox-cli",
-  "version": "0.4.0",
+  "version": "0.7.3",
   "description": "Anti-detect headless browser automation CLI & Skills for AI agents, powered by Camoufox",
   "type": "module",
   "bin": {
@@ -27,9 +27,9 @@
   "homepage": "https://github.com/Bin-Huang/camoufox-cli",
   "bugs": "https://github.com/Bin-Huang/camoufox-cli/issues",
   "dependencies": {
-    "camoufox-js": "^0.8.5",
+    "camoufox-js": "0.11.2",
     "pdf-lib": "^1.17.1",
-    "playwright-core": "^1.52.0"
+    "playwright-core": "1.52.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -37,7 +37,7 @@
     "vitest": "^4.0.18"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.10"
   },
   "files": [
     "dist",

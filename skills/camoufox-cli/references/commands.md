@@ -12,8 +12,8 @@ camoufox-cli forward                 # Go forward
 camoufox-cli reload                  # Reload page
 camoufox-cli url                     # Print current URL
 camoufox-cli title                   # Print page title
-camoufox-cli close                   # Close browser and stop daemon
-camoufox-cli close --all             # Close all sessions
+camoufox-cli close                   # Close your tab (browser exits when the last tab closes)
+camoufox-cli close --all             # Force-close all sessions
 ```
 
 ## Snapshot (Page Analysis)
@@ -76,10 +76,13 @@ camoufox-cli wait --url "*/dashboard" # Wait for URL pattern
 ## Tabs
 
 ```bash
-camoufox-cli tabs                    # List open tabs
+camoufox-cli tabs                    # List open tabs (with owner names)
 camoufox-cli switch 2                # Switch to tab by index
-camoufox-cli close-tab               # Close current tab
+camoufox-cli --tab <name> <cmd>      # Named tab: shared browser + cookies/login,
+                                     # independent page/refs/history per tab
 ```
+
+Named tabs are the cheap way to run concurrent agents as one identity: every tab shares the session's single browser (same fingerprint, same login state), while snapshot refs and history stay per-tab. A finishing agent runs `close` addressed to its own tab (`--tab <name> close`) — that releases only this tab, and the browser exits by itself when the last tab closes, so no coordination between agents is needed. Tab names must be unique per agent: generate one once — a task slug + shell-generated random suffix, e.g. `TAB="price-scan-$(openssl rand -hex 2)"` — and reuse the printed name for every command; don't invent the suffix yourself (LLM-"random" characters collide).
 
 ## Cookies
 
@@ -94,8 +97,10 @@ camoufox-cli cookies export file.json # Export cookies to file
 ```bash
 camoufox-cli sessions                # List active sessions
 camoufox-cli --session <name> <cmd>  # Run command in named session
-camoufox-cli close --all             # Close all sessions
+camoufox-cli close --all             # Force-close all sessions
 ```
+
+A session is a separate browser instance with its own fingerprint, cookies, and launch options (proxy/locale/persistent). For concurrent agents acting as ONE identity, prefer named tabs (see Tabs above) — one browser instead of N.
 
 ## JavaScript
 
@@ -116,7 +121,8 @@ camoufox-cli install --with-deps     # Download browser + system libs (Linux)
 ## Global Options
 
 ```bash
-camoufox-cli --session <name> ...    # Isolated browser session
+camoufox-cli --session <name> ...    # Separate browser instance (own fingerprint/cookies/proxy)
+camoufox-cli --tab <name> ...        # Named tab in the session's shared browser
 camoufox-cli --headed ...            # Show browser window (not headless)
 camoufox-cli --json ...              # JSON output for parsing
 camoufox-cli --timeout <seconds> ... # Daemon idle timeout (default: 1800)
@@ -125,8 +131,20 @@ camoufox-cli --persistent [path] ... # Persistent identity — reuse the same fi
 camoufox-cli --proxy <url> ...      # Proxy server (e.g. http://host:port or http://user:pass@host:port)
 camoufox-cli --no-geoip ...         # Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 camoufox-cli --locale <tag> ...     # Force browser locale (e.g. "en-US" or "en-US,zh-CN")
+camoufox-cli --version              # Print version and exit
 ```
 
 ### `--persistent` in detail
 
 Stores fingerprint, OS, canvas/font seeds, locale, and proxy-derived timezone/geolocation in `<path>/camoufox-cli.json` and reloads it on every launch with the same path. Fingerprint/OS/seeds are frozen — delete the directory to reset. `--locale` overwrites the stored locale when passed; `--proxy` + GeoIP re-derives timezone/geolocation each launch and writes back. `--proxy` and `--no-geoip` themselves are never stored. See the README for the full mental model.
+
+### Config file
+
+Set defaults for the flags above in `~/.camoufox-cli/config.json` (override path with `$CAMOUFOX_CLI_CONFIG`) instead of repeating them. A `default` block applies to every session; an optional `sessions.<name>` block layers extra overrides on top whenever you run `--session <name>` (the name is whatever you pass to `--session` — sessions are never pre-registered). Settable keys: `proxy`, `locale`, `geoip`, `persistent` (`true`/`false`/path), `headed`, `timeout`, `json` (`session` is CLI-only). Precedence: command-line flag > config `sessions.<name>` > config `default` > built-in default. Read only when a session's daemon first launches; a malformed file is ignored with a stderr warning.
+
+```json
+{
+  "default": { "persistent": true, "timeout": 3600 },
+  "sessions": { "<your-session-name>": { "proxy": "socks5://127.0.0.1:1080", "locale": "zh-CN" } }
+}
+```

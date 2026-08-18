@@ -163,11 +163,6 @@ describe("browser not launched", () => {
     expect(resp.success).toBe(false);
   });
 
-  it("close-tab fails", async () => {
-    const resp = await execute(manager, { id: "r1", action: "close-tab", params: {} });
-    expect(resp.success).toBe(false);
-  });
-
   it("cookies fails", async () => {
     const resp = await execute(manager, { id: "r1", action: "cookies", params: { op: "list" } });
     expect(resp.success).toBe(false);
@@ -181,7 +176,7 @@ describe("handler dispatch table coverage", () => {
       "open", "back", "forward", "reload", "url", "title", "close",
       "snapshot", "click", "fill", "type", "select", "check", "hover", "press",
       "text", "eval", "screenshot", "pdf", "scroll", "wait",
-      "tabs", "switch", "close-tab", "cookies",
+      "tabs", "switch", "cookies",
     ];
     for (const action of knownActions) {
       const resp = await execute(manager, { id: "r1", action, params: {} });

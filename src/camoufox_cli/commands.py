@@ -6,21 +6,27 @@ import base64
 import io
 import json
 
-from .browser import BrowserManager
+from .browser import BrowserManager, TabView
 from .protocol import ok_response, error_response
 
 
 def execute(manager: BrowserManager, command: dict) -> dict:
-    """Dispatch and execute a command, return a response dict."""
+    """Dispatch and execute a command, return a response dict.
+
+    The optional top-level "tab" field routes the command to a named tab:
+    all tabs share the browser context (fingerprint + cookies) but keep
+    independent pages, refs, and history.
+    """
     cmd_id = command.get("id", "?")
     action = command.get("action", "")
     params = command.get("params", {})
+    view = TabView(manager, command.get("tab") or "default")
 
     try:
         handler = _HANDLERS.get(action)
         if handler is None:
             return error_response(cmd_id, f"Unknown action: {action}")
-        return handler(manager, cmd_id, params)
+        return handler(view, cmd_id, params)
     except Exception as e:
         return error_response(cmd_id, str(e))
 
@@ -29,7 +35,7 @@ def execute(manager: BrowserManager, command: dict) -> dict:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _resolve_ref(manager: BrowserManager, ref_str: str):
+def _resolve_ref(manager: TabView, ref_str: str):
     """Resolve a ref string to a locator, or raise."""
     entry = manager.refs.resolve(ref_str)
     if entry is None:
@@ -46,7 +52,7 @@ def _resolve_ref(manager: BrowserManager, ref_str: str):
 # Navigation
 # ---------------------------------------------------------------------------
 
-def _cmd_open(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_open(manager: TabView, cmd_id: str, params: dict) -> dict:
     url = params.get("url", "")
     if not url:
         return error_response(cmd_id, "Missing 'url' parameter")
@@ -55,23 +61,34 @@ def _cmd_open(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
         manager.launch(headless=params.get("headless", True))
 
     try:
-        page = manager.get_page()
+        page = manager.get_page(create=True)
         page.goto(url, wait_until="domcontentloaded")
     except Exception as e:
-        if "has been closed" in str(e):
-            # Browser crashed or was closed externally — relaunch
-            manager.close()
-            manager.launch(headless=params.get("headless", True))
-            page = manager.get_page()
-            page.goto(url, wait_until="domcontentloaded")
-        else:
+        if "has been closed" not in str(e):
             raise
+        # "...has been closed" covers both a dead page and a dead browser.
+        # Try recreating just this tab's page first — that leaves every other
+        # tab in the shared browser untouched. Only if that also fails (the
+        # whole browser/context is gone) fall back to a full relaunch.
+        try:
+            page = manager.get_page(create=True)
+            page.goto(url, wait_until="domcontentloaded")
+        except Exception as e2:
+            if "has been closed" not in str(e2):
+                raise
+            # The whole browser/context is gone. A plain close+relaunch is safe
+            # here because this daemon is single-threaded; the JS daemon handles
+            # connections concurrently and coalesces this via recoverDeadBrowser.
+            manager.shutdown()
+            manager.launch(headless=params.get("headless", True))
+            page = manager.get_page(create=True)
+            page.goto(url, wait_until="domcontentloaded")
 
     manager.push_history(page.url)
     return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 
 
-def _cmd_back(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_back(manager: TabView, cmd_id: str, params: dict) -> dict:
     url = manager.go_back()
     if url is None:
         return error_response(cmd_id, "No previous page in history")
@@ -79,7 +96,7 @@ def _cmd_back(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 
 
-def _cmd_forward(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_forward(manager: TabView, cmd_id: str, params: dict) -> dict:
     url = manager.go_forward()
     if url is None:
         return error_response(cmd_id, "No next page in history")
@@ -87,22 +104,28 @@ def _cmd_forward(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 
 
-def _cmd_reload(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_reload(manager: TabView, cmd_id: str, params: dict) -> dict:
     page = manager.get_page()
     page.goto(page.url, wait_until="domcontentloaded")
     return ok_response(cmd_id)
 
 
-def _cmd_url(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_url(manager: TabView, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"url": manager.get_page().url})
 
 
-def _cmd_title(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_title(manager: TabView, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"title": manager.get_page().title()})
 
 
-def _cmd_close(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    manager.close()
+def _cmd_close(manager: TabView, cmd_id: str, params: dict) -> dict:
+    # Close = release *my* tab; the browser exits when the last tab leaves.
+    # Callers never need to know whether other agents share the browser.
+    # `force` (used by `close --all`) tears the whole browser down regardless.
+    if params.get("force"):
+        manager.shutdown()
+    else:
+        manager.release()
     return ok_response(cmd_id, {"closed": True})
 
 
@@ -110,7 +133,7 @@ def _cmd_close(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 # Snapshot
 # ---------------------------------------------------------------------------
 
-def _cmd_snapshot(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_snapshot(manager: TabView, cmd_id: str, params: dict) -> dict:
     page = manager.get_page()
     interactive = params.get("interactive", False)
     selector = params.get("selector")
@@ -125,7 +148,7 @@ def _cmd_snapshot(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 # Interaction
 # ---------------------------------------------------------------------------
 
-def _cmd_click(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_click(manager: TabView, cmd_id: str, params: dict) -> dict:
     ref_str = params.get("ref", "")
     if not ref_str:
         return error_response(cmd_id, "Missing 'ref' parameter")
@@ -150,7 +173,7 @@ def _cmd_click(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
-def _cmd_fill(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_fill(manager: TabView, cmd_id: str, params: dict) -> dict:
     ref_str = params.get("ref", "")
     text = params.get("text", "")
     if not ref_str:
@@ -159,7 +182,7 @@ def _cmd_fill(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
-def _cmd_type(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_type(manager: TabView, cmd_id: str, params: dict) -> dict:
     ref_str = params.get("ref", "")
     text = params.get("text", "")
     if not ref_str:
@@ -168,7 +191,7 @@ def _cmd_type(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
-def _cmd_select(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_select(manager: TabView, cmd_id: str, params: dict) -> dict:
     ref_str = params.get("ref", "")
     value = params.get("value", "")
     if not ref_str:
@@ -177,7 +200,7 @@ def _cmd_select(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
-def _cmd_check(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_check(manager: TabView, cmd_id: str, params: dict) -> dict:
     ref_str = params.get("ref", "")
     if not ref_str:
         return error_response(cmd_id, "Missing 'ref' parameter")
@@ -189,7 +212,7 @@ def _cmd_check(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
-def _cmd_hover(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_hover(manager: TabView, cmd_id: str, params: dict) -> dict:
     ref_str = params.get("ref", "")
     if not ref_str:
         return error_response(cmd_id, "Missing 'ref' parameter")
@@ -197,7 +220,7 @@ def _cmd_hover(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
-def _cmd_press(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_press(manager: TabView, cmd_id: str, params: dict) -> dict:
     key = params.get("key", "")
     if not key:
         return error_response(cmd_id, "Missing 'key' parameter")
@@ -209,7 +232,7 @@ def _cmd_press(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 # Data extraction
 # ---------------------------------------------------------------------------
 
-def _cmd_text(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_text(manager: TabView, cmd_id: str, params: dict) -> dict:
     target = params.get("target", "")
     if not target:
         return error_response(cmd_id, "Missing 'target' parameter")
@@ -222,7 +245,7 @@ def _cmd_text(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"text": text})
 
 
-def _cmd_eval(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_eval(manager: TabView, cmd_id: str, params: dict) -> dict:
     expression = params.get("expression", "")
     if not expression:
         return error_response(cmd_id, "Missing 'expression' parameter")
@@ -230,7 +253,7 @@ def _cmd_eval(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"result": result})
 
 
-def _cmd_screenshot(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_screenshot(manager: TabView, cmd_id: str, params: dict) -> dict:
     page = manager.get_page()
     path = params.get("path")
     full_page = params.get("full_page", False)
@@ -244,7 +267,7 @@ def _cmd_screenshot(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
         return ok_response(cmd_id, {"base64": b64})
 
 
-def _cmd_pdf(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_pdf(manager: TabView, cmd_id: str, params: dict) -> dict:
     path = params.get("path", "")
     if not path:
         return error_response(cmd_id, "Missing 'path' parameter")
@@ -266,7 +289,7 @@ def _cmd_pdf(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 # Scroll & Wait
 # ---------------------------------------------------------------------------
 
-def _cmd_scroll(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_scroll(manager: TabView, cmd_id: str, params: dict) -> dict:
     direction = params.get("direction", "down")
     amount = int(params.get("amount", 500))
 
@@ -277,7 +300,7 @@ def _cmd_scroll(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
-def _cmd_wait(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_wait(manager: TabView, cmd_id: str, params: dict) -> dict:
     page = manager.get_page()
 
     if "ms" in params:
@@ -298,11 +321,11 @@ def _cmd_wait(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 # Tab management
 # ---------------------------------------------------------------------------
 
-def _cmd_tabs(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_tabs(manager: TabView, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"tabs": manager.get_tabs()})
 
 
-def _cmd_switch(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_switch(manager: TabView, cmd_id: str, params: dict) -> dict:
     index = params.get("index")
     if index is None:
         return error_response(cmd_id, "Missing 'index' parameter")
@@ -310,17 +333,11 @@ def _cmd_switch(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 
 
-def _cmd_close_tab(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    manager.close_current_tab()
-    page = manager.get_page()
-    return ok_response(cmd_id, {"url": page.url, "title": page.title()})
-
-
 # ---------------------------------------------------------------------------
 # Cookies
 # ---------------------------------------------------------------------------
 
-def _cmd_cookies(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_cookies(manager: TabView, cmd_id: str, params: dict) -> dict:
     ctx = manager.get_context()
     op = params.get("op", "list")
 
@@ -384,7 +401,6 @@ _HANDLERS = {
     # Tab management
     "tabs": _cmd_tabs,
     "switch": _cmd_switch,
-    "close-tab": _cmd_close_tab,
     # Cookies
     "cookies": _cmd_cookies,
 }
