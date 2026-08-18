@@ -35,7 +35,7 @@ Tell your AI agent (e.g. OpenClaw):
 Or install manually:
 
 ```bash
-npm install -g camoufox-cli
+npm install -g camoufox-cli      # Requires Node.js 20.10+
 camoufox-cli install              # Download browser
 ```
 
@@ -51,6 +51,10 @@ On Linux, install system dependencies with:
 ```bash
 camoufox-cli install --with-deps
 ```
+
+The browser is downloaded from GitHub releases. If the anonymous GitHub API
+rate limit is exhausted (common on shared server/CI IPs), the installer
+automatically falls back to scraping github.com release pages.
 
 ### Agent Skill
 
@@ -80,7 +84,7 @@ camoufox-cli forward                      # Go forward
 camoufox-cli reload                       # Reload page
 camoufox-cli url                          # Print current URL
 camoufox-cli title                        # Print page title
-camoufox-cli close                        # Close browser and stop daemon
+camoufox-cli close                        # Close your tab (browser exits when the last tab closes)
 ```
 
 ### Snapshot
@@ -136,17 +140,29 @@ camoufox-cli wait --url "*/dashboard"     # Wait for URL pattern
 ### Tabs
 
 ```bash
-camoufox-cli tabs                         # List open tabs
+camoufox-cli tabs                         # List open tabs (with owner names)
 camoufox-cli switch 2                     # Switch to tab by index
-camoufox-cli close-tab                    # Close current tab
 ```
 
+Named tabs let concurrent agents share one browser — same fingerprint, same cookies/login state — while each keeps its own page, element refs, and history. Tabs share one browser process (commands from different tabs may queue behind a slow one); separate sessions run as independent processes in parallel:
+
+```bash
+camoufox-cli --tab inbox-scan-x4q open https://app.example.com/a
+camoufox-cli --tab report-pull-9kf open https://app.example.com/b
+camoufox-cli --tab inbox-scan-x4q snapshot -i   # refs are per tab
+camoufox-cli --tab inbox-scan-x4q close         # frees only this tab; browser exits when the last tab closes
+```
+
+Tab names must be unique per agent (nothing enforces this): use a task slug plus a short shell-generated random suffix (e.g. `price-scan-$(openssl rand -hex 2)`), chosen once and reused.
+
 ### Sessions
+
+Each named session is a separate browser process with its own randomly-generated fingerprint and its own cookies. Use sessions for isolated identities, named tabs (above) for cheap parallelism under one identity. For real multi-account isolation, combine sessions with a per-session proxy (config file) and `--persistent` — see Persistent Identity below:
 
 ```bash
 camoufox-cli sessions                     # List active sessions
 camoufox-cli --session work open <url>    # Use named session
-camoufox-cli close --all                  # Close all sessions
+camoufox-cli close --all                  # Force-close all sessions
 ```
 
 ### Cookies
@@ -161,6 +177,8 @@ camoufox-cli cookies export file.json     # Export cookies
 
 ```
 --session <name>       Named session (default: "default")
+--tab <name>           Named tab within the session's shared browser: same fingerprint and
+                       cookies/login, independent page/refs/history (default: "default")
 --headed               Show browser window (default: headless)
 --timeout <seconds>    Daemon idle timeout (default: 1800)
 --json                 Output as JSON
@@ -168,7 +186,35 @@ camoufox-cli cookies export file.json     # Export cookies
 --proxy <url>          Proxy server (http:// or https://; auth: http://user:pass@host:port)
 --no-geoip             Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 --locale <tag>         Force browser locale (e.g. "en-US" or "en-US,zh-CN")
+--version              Print version and exit
 ```
+
+## Config File
+
+Tired of repeating the same flags on every call? Put defaults in `~/.camoufox-cli/config.json` (override the path with `$CAMOUFOX_CLI_CONFIG`):
+
+```json
+{
+  "default": {
+    "persistent": true,
+    "timeout": 3600,
+    "proxy": "http://user:pass@host:8080"
+  },
+  "sessions": {
+    "<your-session-name>": {
+      "proxy": "socks5://127.0.0.1:1080",
+      "locale": "zh-CN"
+    }
+  }
+}
+```
+
+- **`default`** applies to every session.
+- **`sessions` is optional.** You never pre-register sessions — the name is just whatever you pass to `--session`. A `sessions.<name>` block only kicks in when you happen to run `--session <name>`, layering its keys on top of `default`; any other session (or no `--session` at all) just uses `default`. Above, `camoufox-cli --session <your-session-name> open <url>` swaps in that block's proxy + locale, while every other session keeps the `default` proxy.
+- **Command-line flags always win** over the file, which in turn wins over built-in defaults.
+- Settable keys: `proxy`, `locale`, `geoip`, `persistent` (`true` / `false` / path string), `headed`, `timeout`, `json`. `session` is command-line only (it selects which block to apply), and per-command options like `--full` or `-i` are never read from config.
+- A broken config never blocks a command — it's ignored with a warning on stderr.
+- Config is read when a session's daemon **first launches**. If one is already running for that session, run `camoufox-cli --session <name> close` first for changes to take effect.
 
 ## Persistent Identity
 

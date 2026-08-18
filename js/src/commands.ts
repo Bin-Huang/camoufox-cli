@@ -1,17 +1,17 @@
 /** Command implementations for the daemon. */
 
 import type { Locator } from "playwright-core";
-import { BrowserManager } from "./browser.js";
+import { BrowserManager, TabView } from "./browser.js";
 import { okResponse, errorResponse, type Response } from "./protocol.js";
 
-type Handler = (manager: BrowserManager, cmdId: string, params: Record<string, unknown>) => Promise<Response>;
+type Handler = (manager: TabView, cmdId: string, params: Record<string, unknown>) => Promise<Response>;
 
-function resolveRef(manager: BrowserManager, refStr: string): Locator {
+async function resolveRef(manager: TabView, refStr: string): Promise<Locator> {
   const entry = manager.refs.resolve(refStr);
   if (!entry) {
     throw new Error(`Ref @${refStr.replace(/^@/, "")} not found. Run 'camoufox-cli snapshot' to refresh refs.`);
   }
-  const page = manager.getPage();
+  const page = (await manager.getPage());
   const locator = page.getByRole(entry.role as any, { name: entry.name, exact: true });
   return locator.nth(entry.nth);
 }
@@ -29,20 +29,28 @@ const cmdOpen: Handler = async (manager, cmdId, params) => {
   }
 
   try {
-    const page = manager.getPage();
+    const page = (await manager.getPage(true));
     await page.goto(url, { waitUntil: "domcontentloaded" });
   } catch (e: any) {
-    if (String(e).includes("has been closed")) {
-      await manager.close();
-      await manager.launch(params.headless as boolean ?? true);
-      const page = manager.getPage();
+    if (!String(e).includes("has been closed")) throw e;
+    // "...has been closed" covers both a dead page and a dead browser. Try
+    // recreating just this tab's page first — that leaves every other tab in
+    // the shared browser untouched. Only if that also fails (the whole
+    // browser/context is gone) fall back to a full relaunch.
+    try {
+      const page = (await manager.getPage(true));
       await page.goto(url, { waitUntil: "domcontentloaded" });
-    } else {
-      throw e;
+    } catch (e2: any) {
+      if (!String(e2).includes("has been closed")) throw e2;
+      // The whole browser/context is gone. Recover via the coalesced path so
+      // two tabs relaunching at once don't tear down each other's new browser.
+      await manager.recoverDeadBrowser(params.headless as boolean ?? true);
+      const page = (await manager.getPage(true));
+      await page.goto(url, { waitUntil: "domcontentloaded" });
     }
   }
 
-  const page = manager.getPage();
+  const page = (await manager.getPage(true));
   manager.pushHistory(page.url());
   return okResponse(cmdId, { url: page.url(), title: await page.title() });
 };
@@ -50,33 +58,40 @@ const cmdOpen: Handler = async (manager, cmdId, params) => {
 const cmdBack: Handler = async (manager, cmdId) => {
   const url = await manager.goBack();
   if (url === null) return errorResponse(cmdId, "No previous page in history");
-  const page = manager.getPage();
+  const page = (await manager.getPage());
   return okResponse(cmdId, { url: page.url(), title: await page.title() });
 };
 
 const cmdForward: Handler = async (manager, cmdId) => {
   const url = await manager.goForward();
   if (url === null) return errorResponse(cmdId, "No next page in history");
-  const page = manager.getPage();
+  const page = (await manager.getPage());
   return okResponse(cmdId, { url: page.url(), title: await page.title() });
 };
 
 const cmdReload: Handler = async (manager, cmdId) => {
-  const page = manager.getPage();
+  const page = (await manager.getPage());
   await page.goto(page.url(), { waitUntil: "domcontentloaded" });
   return okResponse(cmdId);
 };
 
 const cmdUrl: Handler = async (manager, cmdId) => {
-  return okResponse(cmdId, { url: manager.getPage().url() });
+  return okResponse(cmdId, { url: (await manager.getPage()).url() });
 };
 
 const cmdTitle: Handler = async (manager, cmdId) => {
-  return okResponse(cmdId, { title: await manager.getPage().title() });
+  return okResponse(cmdId, { title: await (await manager.getPage()).title() });
 };
 
-const cmdClose: Handler = async (manager, cmdId) => {
-  await manager.close();
+const cmdClose: Handler = async (manager, cmdId, params) => {
+  // Close = release *my* tab; the browser exits when the last tab leaves.
+  // Callers never need to know whether other agents share the browser.
+  // `force` (used by `close --all`) tears the whole browser down regardless.
+  if (params.force) {
+    await manager.shutdown();
+  } else {
+    await manager.release();
+  }
   return okResponse(cmdId, { closed: true });
 };
 
@@ -85,7 +100,7 @@ const cmdClose: Handler = async (manager, cmdId) => {
 // ---------------------------------------------------------------------------
 
 const cmdSnapshot: Handler = async (manager, cmdId, params) => {
-  const page = manager.getPage();
+  const page = (await manager.getPage());
   const interactive = params.interactive as boolean ?? false;
   const selector = params.selector as string | undefined;
 
@@ -102,8 +117,8 @@ const cmdSnapshot: Handler = async (manager, cmdId, params) => {
 const cmdClick: Handler = async (manager, cmdId, params) => {
   const refStr = params.ref as string;
   if (!refStr) return errorResponse(cmdId, "Missing 'ref' parameter");
-  const locator = resolveRef(manager, refStr);
-  const page = manager.getPage();
+  const locator = await resolveRef(manager, refStr);
+  const page = (await manager.getPage());
   const urlBefore = page.url();
 
   await locator.click();
@@ -117,7 +132,7 @@ const cmdFill: Handler = async (manager, cmdId, params) => {
   const refStr = params.ref as string;
   const text = params.text as string ?? "";
   if (!refStr) return errorResponse(cmdId, "Missing 'ref' parameter");
-  await resolveRef(manager, refStr).fill(text);
+  await (await resolveRef(manager, refStr)).fill(text);
   return okResponse(cmdId);
 };
 
@@ -125,7 +140,7 @@ const cmdType: Handler = async (manager, cmdId, params) => {
   const refStr = params.ref as string;
   const text = params.text as string ?? "";
   if (!refStr) return errorResponse(cmdId, "Missing 'ref' parameter");
-  await resolveRef(manager, refStr).pressSequentially(text);
+  await (await resolveRef(manager, refStr)).pressSequentially(text);
   return okResponse(cmdId);
 };
 
@@ -133,14 +148,14 @@ const cmdSelect: Handler = async (manager, cmdId, params) => {
   const refStr = params.ref as string;
   const value = params.value as string ?? "";
   if (!refStr) return errorResponse(cmdId, "Missing 'ref' parameter");
-  await resolveRef(manager, refStr).selectOption({ label: value });
+  await (await resolveRef(manager, refStr)).selectOption({ label: value });
   return okResponse(cmdId);
 };
 
 const cmdCheck: Handler = async (manager, cmdId, params) => {
   const refStr = params.ref as string;
   if (!refStr) return errorResponse(cmdId, "Missing 'ref' parameter");
-  const locator = resolveRef(manager, refStr);
+  const locator = await resolveRef(manager, refStr);
   if (await locator.isChecked()) {
     await locator.uncheck({ force: true });
   } else {
@@ -152,14 +167,14 @@ const cmdCheck: Handler = async (manager, cmdId, params) => {
 const cmdHover: Handler = async (manager, cmdId, params) => {
   const refStr = params.ref as string;
   if (!refStr) return errorResponse(cmdId, "Missing 'ref' parameter");
-  await resolveRef(manager, refStr).hover({ force: true });
+  await (await resolveRef(manager, refStr)).hover({ force: true });
   return okResponse(cmdId);
 };
 
 const cmdPress: Handler = async (manager, cmdId, params) => {
   const key = params.key as string;
   if (!key) return errorResponse(cmdId, "Missing 'key' parameter");
-  await manager.getPage().keyboard.press(key);
+  await (await manager.getPage()).keyboard.press(key);
   return okResponse(cmdId);
 };
 
@@ -173,9 +188,9 @@ const cmdText: Handler = async (manager, cmdId, params) => {
 
   let text: string;
   if (target.startsWith("@")) {
-    text = (await resolveRef(manager, target).textContent()) || "";
+    text = (await (await resolveRef(manager, target)).textContent()) || "";
   } else {
-    text = (await manager.getPage().locator(target).textContent()) || "";
+    text = (await (await manager.getPage()).locator(target).textContent()) || "";
   }
   return okResponse(cmdId, { text });
 };
@@ -183,12 +198,12 @@ const cmdText: Handler = async (manager, cmdId, params) => {
 const cmdEval: Handler = async (manager, cmdId, params) => {
   const expression = params.expression as string;
   if (!expression) return errorResponse(cmdId, "Missing 'expression' parameter");
-  const result = await manager.getPage().evaluate(expression);
+  const result = await (await manager.getPage()).evaluate(expression);
   return okResponse(cmdId, { result });
 };
 
 const cmdScreenshot: Handler = async (manager, cmdId, params) => {
-  const page = manager.getPage();
+  const page = (await manager.getPage());
   const path = params.path as string | undefined;
   const fullPage = params.full_page as boolean ?? false;
 
@@ -205,7 +220,7 @@ const cmdPdf: Handler = async (manager, cmdId, params) => {
   const filePath = params.path as string;
   if (!filePath) return errorResponse(cmdId, "Missing 'path' parameter");
 
-  const page = manager.getPage();
+  const page = (await manager.getPage());
   const buf = await page.screenshot({ fullPage: true });
 
   const { PDFDocument } = await import("pdf-lib");
@@ -233,17 +248,17 @@ const cmdScroll: Handler = async (manager, cmdId, params) => {
   const direction = params.direction as string ?? "down";
   let amount = Number(params.amount ?? 500);
   if (direction === "up") amount = -amount;
-  await manager.getPage().evaluate(`window.scrollBy(0, ${amount})`);
+  await (await manager.getPage()).evaluate(`window.scrollBy(0, ${amount})`);
   return okResponse(cmdId);
 };
 
 const cmdWait: Handler = async (manager, cmdId, params) => {
-  const page = manager.getPage();
+  const page = (await manager.getPage());
 
   if ("ms" in params) {
     await page.waitForTimeout(Number(params.ms));
   } else if ("ref" in params) {
-    await resolveRef(manager, params.ref as string).waitFor();
+    await (await resolveRef(manager, params.ref as string)).waitFor();
   } else if ("selector" in params) {
     await page.waitForSelector(params.selector as string);
   } else if ("url" in params) {
@@ -266,12 +281,6 @@ const cmdTabs: Handler = async (manager, cmdId) => {
 const cmdSwitch: Handler = async (manager, cmdId, params) => {
   if (params.index === undefined) return errorResponse(cmdId, "Missing 'index' parameter");
   const page = await manager.switchToTab(Number(params.index));
-  return okResponse(cmdId, { url: page.url(), title: await page.title() });
-};
-
-const cmdCloseTab: Handler = async (manager, cmdId) => {
-  await manager.closeCurrentTab();
-  const page = manager.getPage();
   return okResponse(cmdId, { url: page.url(), title: await page.title() });
 };
 
@@ -333,7 +342,6 @@ const HANDLERS: Record<string, Handler> = {
   wait: cmdWait,
   tabs: cmdTabs,
   switch: cmdSwitch,
-  "close-tab": cmdCloseTab,
   cookies: cmdCookies,
 };
 
@@ -341,11 +349,15 @@ export async function execute(manager: BrowserManager, command: Record<string, u
   const cmdId = (command.id as string) || "?";
   const action = (command.action as string) || "";
   const params = (command.params as Record<string, unknown>) || {};
+  // The optional top-level "tab" field routes the command to a named tab:
+  // all tabs share the browser context (fingerprint + cookies) but keep
+  // independent pages, refs, and history.
+  const view = new TabView(manager, (command.tab as string) || "default");
 
   try {
     const handler = HANDLERS[action];
     if (!handler) return errorResponse(cmdId, `Unknown action: ${action}`);
-    return await handler(manager, cmdId, params);
+    return await handler(view, cmdId, params);
   } catch (e: any) {
     return errorResponse(cmdId, String(e.message || e));
   }

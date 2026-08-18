@@ -68,17 +68,27 @@ def daemon():
 
     yield SOCK_PATH
 
-    # Shut down daemon
+    # Shut down daemon. Tests leave named tabs open, so a plain close would
+    # only release the default tab and keep the daemon alive; force it.
     try:
-        send_command(SOCK_PATH, {"id": "teardown", "action": "close", "params": {}})
+        send_command(SOCK_PATH, {"id": "teardown", "action": "close", "params": {"force": True}})
     except Exception:
         pass
     thread.join(timeout=10)
+    # The daemon keeps its .lock file by design (unlinking it would reintroduce
+    # the startup race); remove it here so test runs don't litter /tmp.
+    try:
+        os.unlink(f"/tmp/camoufox-cli-{TEST_SESSION}.lock")
+    except FileNotFoundError:
+        pass
 
 
-def cmd(sock_path: str, action: str, params=None, id: str = "r1") -> dict:
+def cmd(sock_path: str, action: str, params=None, id: str = "r1", tab: str | None = None) -> dict:
     """Shorthand for send_command."""
-    return send_command(sock_path, {"id": id, "action": action, "params": params or {}})
+    command = {"id": id, "action": action, "params": params or {}}
+    if tab is not None:
+        command["tab"] = tab
+    return send_command(sock_path, command)
 
 
 def find_ref(snapshot_text: str, role: str) -> str:
@@ -201,8 +211,74 @@ class TestE2E:
         assert resp["success"] is True
         assert "cookies" in resp["data"]
 
+    def test_named_tab_gets_own_page(self, daemon):
+        cmd(daemon, "open", {"url": FIXTURE_URL})  # ensure default tab is on fixture
+        resp = cmd(daemon, "open", {"url": "data:text/html,<title>TabA</title><h1>A</h1>"}, tab="a")
+        assert resp["success"] is True
+
+        # default tab's page is untouched
+        resp = cmd(daemon, "url")
+        assert "fixture.html" in resp["data"]["url"]
+        resp = cmd(daemon, "url", tab="a")
+        assert resp["data"]["url"].startswith("data:")
+
+        # both pages live in the same shared context (same fingerprint/cookies)
+        resp = cmd(daemon, "tabs")
+        owners = {t["tab"] for t in resp["data"]["tabs"]}
+        assert {"default", "a"} <= owners
+
+    def test_refs_are_per_tab(self, daemon):
+        cmd(daemon, "open", {"url": FIXTURE_URL})
+        snap = cmd(daemon, "snapshot")
+        ref = find_ref(snap["data"]["snapshot"], "textbox")
+
+        # Snapshotting another tab must not clobber the default tab's refs
+        cmd(daemon, "open", {"url": "data:text/html,<button>Only</button>"}, tab="a")
+        cmd(daemon, "snapshot", tab="a")
+
+        resp = cmd(daemon, "fill", {"ref": ref, "text": "still-works"})
+        assert resp["success"] is True
+
+    def test_history_is_per_tab(self, daemon):
+        cmd(daemon, "open", {"url": "data:text/html,<h1>B1</h1>"}, tab="b")
+        # tab "b" has a single history entry, so back must fail there
+        resp = cmd(daemon, "back", tab="b")
+        assert resp["success"] is False
+
+    def test_close_releases_named_tab_keeps_browser(self, daemon):
+        cmd(daemon, "open", {"url": "data:text/html,<h1>C</h1>"}, tab="c")
+        resp = cmd(daemon, "close", tab="c")
+        assert resp["success"] is True
+        # Other tabs (the default one) keep the browser and daemon alive.
+        resp = cmd(daemon, "url")
+        assert resp["success"] is True
+
+    def test_close_does_not_hijack_another_tab(self, daemon):
+        # Two agents, each on its own page.
+        cmd(daemon, "open", {"url": "data:text/html,<title>KEEP</title>"}, tab="keep")
+        cmd(daemon, "open", {"url": "data:text/html,<title>GOING</title>"}, tab="going")
+        # The finishing agent closes — this must release only its own tab.
+        assert cmd(daemon, "close", tab="going")["success"] is True
+        # The other agent must still be on its OWN page, not a hijacked one.
+        resp = cmd(daemon, "title", tab="keep")
+        assert resp["data"]["title"] == "KEEP"
+
+    def test_close_is_idempotent_on_pageless_tab(self, daemon):
+        # A close from a tab that never opened a page succeeds as a no-op and
+        # must not shut down the browser other tabs are using.
+        resp = cmd(daemon, "close", tab="never-opened-close")
+        assert resp["success"] is True
+        assert cmd(daemon, "url")["success"] is True
+
+    def test_command_on_pageless_tab_errors(self, daemon):
+        # A read command on a tab that never opened a page fails loudly instead
+        # of silently creating a blank page and returning garbage.
+        resp = cmd(daemon, "title", tab="never-opened-xyz")
+        assert resp["success"] is False
+        assert "no open page" in resp["error"]
+
     def test_close_shuts_down_daemon(self):
-        """Close command shuts down the daemon (run last, standalone)."""
+        """Closing the last tab shuts down the daemon (run last, standalone)."""
         session = f"e2e-close-{os.getpid()}-{int(time.time())}"
         sock = f"/tmp/camoufox-cli-{session}.sock"
         server = DaemonServer(session=session, headless=True, timeout=60)
@@ -210,8 +286,17 @@ class TestE2E:
         thread.start()
         wait_for_socket(sock)
 
+        resp = send_command(sock, {"id": "r0", "action": "open", "params": {"url": FIXTURE_URL}})
+        assert resp["success"] is True
+
+        # The default tab is the only live tab, so this close takes the
+        # browser — and with it the daemon — down.
         resp = send_command(sock, {"id": "r1", "action": "close", "params": {}})
         assert resp["success"] is True
 
         thread.join(timeout=10)
         assert not os.path.exists(sock)
+        try:
+            os.unlink(f"/tmp/camoufox-cli-{session}.lock")
+        except FileNotFoundError:
+            pass

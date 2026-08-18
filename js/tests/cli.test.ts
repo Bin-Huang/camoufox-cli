@@ -1,5 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buildCommand, getSocketPath, parseArgs } from "../src/cli.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { buildCommand, getSocketPath, getVersion, parseArgs } from "../src/cli.js";
+import { loadDefaults } from "../src/config.js";
 
 // buildCommand calls process.exit on error; mock it to throw instead
 beforeEach(() => {
@@ -7,6 +12,8 @@ beforeEach(() => {
     throw new Error(`process.exit(${code})`);
   });
   vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  // Isolate from any real ~/.camoufox-cli/config.json on the dev's machine.
+  process.env.CAMOUFOX_CLI_CONFIG = path.join(os.tmpdir(), "camoufox-cli-absent-dir", "config.json");
 });
 
 describe("buildCommand", () => {
@@ -186,11 +193,6 @@ describe("buildCommand", () => {
     expect((cmd.params as any).index).toBe(2);
   });
 
-  it("close-tab", () => {
-    const cmd = buildCommand("close-tab", ["close-tab"]);
-    expect(cmd.action).toBe("close-tab");
-  });
-
   // --- Session ---
   it("sessions", () => {
     const cmd = buildCommand("sessions", ["sessions"]);
@@ -287,6 +289,22 @@ describe("parseArgs", () => {
   it("--proxy missing value exits", () => {
     expect(() => parseArgs(["--proxy"])).toThrow("process.exit");
   });
+
+  it("tab defaults to \"default\" and is stamped on the command", () => {
+    const { flags, command } = parseArgs(["open", "https://example.com"]);
+    expect(flags.tab).toBe("default");
+    expect(command.tab).toBe("default");
+  });
+
+  it("--tab flag routes the command", () => {
+    const { flags, command } = parseArgs(["--tab", "agent1", "open", "https://example.com"]);
+    expect(flags.tab).toBe("agent1");
+    expect(command.tab).toBe("agent1");
+  });
+
+  it("--tab missing value exits", () => {
+    expect(() => parseArgs(["--tab"])).toThrow("process.exit");
+  });
 });
 
 describe("getSocketPath", () => {
@@ -296,5 +314,162 @@ describe("getSocketPath", () => {
 
   it("custom session", () => {
     expect(getSocketPath("my-session")).toBe("/tmp/camoufox-cli-my-session.sock");
+  });
+});
+
+describe("getVersion", () => {
+  it("returns the version from package.json", () => {
+    const pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    expect(getVersion()).toBe(pkg.version);
+  });
+});
+
+describe("config file", () => {
+  let dir: string;
+  let cfg: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "camoufox-cli-test-"));
+    cfg = path.join(dir, "config.json");
+    process.env.CAMOUFOX_CLI_CONFIG = cfg;
+  });
+
+  afterEach(() => {
+    delete process.env.CAMOUFOX_CLI_CONFIG;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const write = (obj: unknown) => fs.writeFileSync(cfg, JSON.stringify(obj));
+
+  // --- loadDefaults ---
+  it("absent file -> {}", () => {
+    expect(loadDefaults("default")).toEqual({});
+  });
+
+  it("default block", () => {
+    write({ default: { timeout: 60, headed: true } });
+    const out = loadDefaults("default");
+    expect(out.timeout).toBe(60);
+    expect(out.headed).toBe(true);
+  });
+
+  it("session overrides default", () => {
+    write({ default: { locale: "en-US", timeout: 60 }, sessions: { work: { locale: "zh-CN" } } });
+    const out = loadDefaults("work");
+    expect(out.locale).toBe("zh-CN"); // session block wins
+    expect(out.timeout).toBe(60); // inherited from default block
+  });
+
+  it("unknown session uses default block", () => {
+    write({ default: { locale: "en-US" }, sessions: { work: { locale: "zh-CN" } } });
+    expect(loadDefaults("other").locale).toBe("en-US");
+  });
+
+  it("session key excluded", () => {
+    write({ default: { session: "ignored", proxy: "http://h:1" } });
+    const out = loadDefaults("default") as any;
+    expect(out.session).toBeUndefined();
+    expect(out.proxy).toBe("http://h:1");
+  });
+
+  it("unknown key ignored", () => {
+    write({ default: { bogus: 1, headed: true } });
+    const out = loadDefaults("default") as any;
+    expect(out.bogus).toBeUndefined();
+    expect(out.headed).toBe(true);
+  });
+
+  it("persistent true -> empty-string sentinel", () => {
+    write({ default: { persistent: true } });
+    expect(loadDefaults("default").persistent).toBe("");
+  });
+
+  it("persistent false -> null", () => {
+    write({ default: { persistent: false } });
+    expect(loadDefaults("default").persistent).toBeNull();
+  });
+
+  it("persistent path kept", () => {
+    write({ default: { persistent: "/tmp/p" } });
+    expect(loadDefaults("default").persistent).toBe("/tmp/p");
+  });
+
+  it("invalid persistent dropped", () => {
+    // A number would crash daemon launch; it must be dropped, not passed through.
+    write({ default: { persistent: 123, headed: true } });
+    const out = loadDefaults("default") as any;
+    expect(out.persistent).toBeUndefined();
+    expect(out.headed).toBe(true);
+  });
+
+  it("persistent null disables", () => {
+    write({ default: { persistent: null } });
+    expect(loadDefaults("default").persistent).toBeNull();
+  });
+
+  it("invalid timeout dropped", () => {
+    write({ default: { timeout: "abc", headed: true } });
+    const out = loadDefaults("default") as any;
+    expect(out.timeout).toBeUndefined();
+    expect(out.headed).toBe(true);
+  });
+
+  it("timeout bool dropped", () => {
+    write({ default: { timeout: true } });
+    expect("timeout" in loadDefaults("default")).toBe(false);
+  });
+
+  it("timeout float truncated", () => {
+    write({ default: { timeout: 3600.9 } });
+    expect(loadDefaults("default").timeout).toBe(3600);
+  });
+
+  it("invalid proxy dropped", () => {
+    // A non-string proxy would crash daemon launch; it must be dropped.
+    write({ default: { proxy: 123, locale: "en-US" } });
+    const out = loadDefaults("default") as any;
+    expect(out.proxy).toBeUndefined();
+    expect(out.locale).toBe("en-US");
+  });
+
+  it("bool field wrong type dropped", () => {
+    write({ default: { headed: "false", geoip: "no" } });
+    const out = loadDefaults("default") as any;
+    expect(out.headed).toBeUndefined();
+    expect(out.geoip).toBeUndefined();
+  });
+
+  it("malformed json ignored", () => {
+    fs.writeFileSync(cfg, "{not valid json");
+    expect(loadDefaults("default")).toEqual({});
+  });
+
+  it("non-object top level ignored", () => {
+    write([1, 2, 3]);
+    expect(loadDefaults("default")).toEqual({});
+  });
+
+  // --- parseArgs integration (precedence: CLI > config > built-in) ---
+  it("config supplies defaults", () => {
+    write({ default: { proxy: "http://h:1", headed: true } });
+    const { flags } = parseArgs(["open", "https://example.com"]);
+    expect(flags.proxy).toBe("http://h:1");
+    expect(flags.headed).toBe(true);
+  });
+
+  it("CLI overrides config", () => {
+    write({ default: { timeout: 60 } });
+    const { flags } = parseArgs(["--timeout", "999", "open", "x"]);
+    expect(flags.timeout).toBe(999);
+  });
+
+  it("session block applies", () => {
+    write({ sessions: { work: { locale: "zh-CN" } } });
+    const { flags } = parseArgs(["--session", "work", "open", "x"]);
+    expect(flags.locale).toBe("zh-CN");
+    // A different session doesn't pick up the "work" block.
+    const { flags: f2 } = parseArgs(["open", "x"]);
+    expect(f2.locale).toBeNull();
   });
 });
