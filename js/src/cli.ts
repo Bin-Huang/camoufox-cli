@@ -10,9 +10,29 @@ import { fileURLToPath } from "node:url";
 import { loadDefaults } from "./config.js";
 
 const SOCKET_PREFIX = "/tmp/camoufox-cli-";
+// A unix socket path must fit in sun_path: 104 bytes on macOS (108 on Linux),
+// including the terminating NUL.
+const MAX_SOCKET_PATH_BYTES = 103;
 
 export function getSocketPath(session: string): string {
   return `${SOCKET_PREFIX}${session}.sock`;
+}
+
+/**
+ * Why `session` cannot be used as a session name, or null if it can. The name
+ * becomes part of the daemon's /tmp socket and pid file names and of the
+ * default --persistent profile path.
+ */
+export function sessionNameError(session: string): string | null {
+  if (session === "" || session === "." || session === "..") {
+    return "must be a non-empty name other than '.' or '..'";
+  }
+  if (session.includes("/")) return "must not contain '/'";
+  const maxBytes = MAX_SOCKET_PATH_BYTES - Buffer.byteLength(getSocketPath(""));
+  if (Buffer.byteLength(session) > maxBytes) {
+    return `must be at most ${maxBytes} bytes (unix socket path limit)`;
+  }
+  return null;
 }
 
 function sendCommand(sockPath: string, command: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -42,19 +62,39 @@ function spawnDaemon(session: string, headed: boolean, timeout: number, persiste
   if (!geoip) args.push("--no-geoip");
   if (locale) args.push("--locale", locale);
 
+  // The daemon writes stderr to an unlinked temp file, so a failed start can
+  // report its real cause instead of only a timeout.
+  const errPath = path.join(os.tmpdir(), `camoufox-cli-daemon-${process.pid}-${Date.now()}.log`);
+  const errFd = fs.openSync(errPath, "w+");
+  fs.unlinkSync(errPath);
   spawn("node", [daemonPath, ...args], {
     detached: true,
-    stdio: "ignore",
+    stdio: ["ignore", "ignore", errFd],
   }).unref();
 
   const sockPath = getSocketPath(session);
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     let attempts = 0;
     const check = () => {
-      if (fs.existsSync(sockPath)) return resolve();
+      if (fs.existsSync(sockPath)) {
+        fs.closeSync(errFd);
+        return resolve();
+      }
       attempts++;
-      if (attempts >= 50) return reject(new Error("Daemon did not start within 5 seconds"));
-      setTimeout(check, 100);
+      if (attempts < 50) {
+        setTimeout(check, 100);
+        return;
+      }
+      // Read from offset 0: the daemon shares this file's offset.
+      const output = Buffer.alloc(fs.fstatSync(errFd).size);
+      fs.readSync(errFd, output, 0, output.length, 0);
+      fs.closeSync(errFd);
+      process.stderr.write("Error: Daemon did not start within 5 seconds\n");
+      const outputLines = output.toString("utf-8").trim().split("\n").filter(Boolean);
+      if (outputLines.length > 0) {
+        process.stderr.write(`Daemon output:\n${outputLines.slice(-20).join("\n")}\n`);
+      }
+      process.exit(1);
     };
     check();
   });
@@ -181,6 +221,11 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
 
   // session selects which config block applies, so it comes only from the CLI.
   const session = cli.session ?? builtin.session;
+  const sessionError = sessionNameError(session);
+  if (sessionError) {
+    process.stderr.write(`Error: invalid --session ${JSON.stringify(session)}: ${sessionError}\n`);
+    process.exit(1);
+  }
   const flags: Flags = { ...builtin, ...loadDefaults(session), ...cli };
 
   const command = buildCommand(rest[0], rest);

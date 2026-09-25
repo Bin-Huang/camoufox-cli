@@ -1,12 +1,15 @@
 """Tests for CLI argument parsing and command building."""
 
+import fcntl
 import json
+import os
 import re
+import time
 
 import pytest
 
 from camoufox_cli import config
-from camoufox_cli.cli import build_command, parse_args, list_sessions, get_socket_path, get_version
+from camoufox_cli.cli import build_command, parse_args, list_sessions, get_socket_path, get_version, spawn_daemon
 
 
 @pytest.fixture(autouse=True)
@@ -240,6 +243,17 @@ class TestParseArgs:
         with pytest.raises(SystemExit):
             parse_args(["--tab"])
 
+    @pytest.mark.parametrize("session", ["a/b", "", ".", "..", "x" * 81, "\u00e9" * 41])
+    def test_invalid_session_name_exits(self, session):
+        # These would otherwise fail inside the daemon (bad file path or a
+        # socket path over the unix limit) and surface only as a timeout.
+        with pytest.raises(SystemExit):
+            parse_args(["--session", session, "open", "https://example.com"])
+
+    def test_session_name_at_length_limit(self):
+        flags, cmd = parse_args(["--session", "x" * 80, "open", "https://example.com"])
+        assert flags["session"] == "x" * 80
+
     def test_headed_flag(self):
         flags, cmd = parse_args(["--headed", "open", "https://example.com"])
         assert flags["headed"] is True
@@ -433,3 +447,22 @@ class TestConfigFile:
         # A different session doesn't pick up the "work" block.
         flags2, _ = parse_args(["open", "https://example.com"])
         assert flags2["locale"] is None
+
+
+class TestSpawnDaemon:
+    def test_startup_failure_reports_daemon_output(self, capsys):
+        # Hold the session lock so the spawned daemon exits at startup; the
+        # client must show the daemon's own error, not only the timeout.
+        session = f"spawn-test-{os.getpid()}-{int(time.time())}"
+        lock_path = f"/tmp/camoufox-cli-{session}.lock"
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            with pytest.raises(SystemExit):
+                spawn_daemon(session, headed=False, timeout=60, persistent=None)
+        finally:
+            os.close(fd)
+            os.unlink(lock_path)
+        err = capsys.readouterr().err
+        assert "Daemon did not start within 5 seconds" in err
+        assert "Daemon already running" in err

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildCommand, getSocketPath, getVersion, parseArgs } from "../src/cli.js";
 import { loadDefaults } from "../src/config.js";
@@ -289,6 +290,17 @@ describe("parseArgs", () => {
     expect(flags.geoip).toBe(true);
   });
 
+  it.each(["a/b", "", ".", "..", "x".repeat(81), "\u00e9".repeat(41)])("invalid session name %j exits", (session) => {
+    // These would otherwise fail inside the daemon (bad file path or a socket
+    // path over the unix limit) and surface only as a timeout.
+    expect(() => parseArgs(["--session", session, "open", "https://example.com"])).toThrow("process.exit");
+  });
+
+  it("session name at length limit", () => {
+    const { flags } = parseArgs(["--session", "x".repeat(80), "open", "https://example.com"]);
+    expect(flags.session).toBe("x".repeat(80));
+  });
+
   it("--no-geoip flag", () => {
     const { flags } = parseArgs(["--no-geoip", "open", "https://example.com"]);
     expect(flags.geoip).toBe(false);
@@ -490,4 +502,25 @@ describe("config file", () => {
     const { flags: f2 } = parseArgs(["open", "x"]);
     expect(f2.locale).toBeNull();
   });
+});
+
+describe("daemon spawn", () => {
+  // Runs against the built CLI; skips when dist is absent.
+  it("startup failure reports the daemon's output", () => {
+    const cliJs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/cli.js");
+    if (!fs.existsSync(cliJs)) return; // needs `npm run build`
+    // A pid file naming a live process (this one) makes the daemon exit at
+    // startup; the client must show the daemon's own error, not only the timeout.
+    const session = `spawn-test-${process.pid}-${Date.now()}`;
+    const pidPath = `/tmp/camoufox-cli-${session}.pid`;
+    fs.writeFileSync(pidPath, String(process.pid));
+    try {
+      const res = spawnSync(process.execPath, [cliJs, "--session", session, "title"], { encoding: "utf-8", timeout: 15000 });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("Daemon did not start within 5 seconds");
+      expect(res.stderr).toContain("Daemon already running");
+    } finally {
+      fs.rmSync(pidPath, { force: true });
+    }
+  }, 20000);
 });
