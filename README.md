@@ -10,18 +10,6 @@ Anti-detect browser CLI & Skills for AI agents, powered by [Camoufox](https://gi
 - Session isolation with cookie import/export
 - Shell commands, no code generation
 
-## Sponsors
-
-<table>
-<tr>
-<td align="center">
-<a href="https://www.swiftproxy.net/?ref=bin" target="_blank"><img src="./doc//assets/swiftproxy.png" width="300" alt="Swiftproxy logo" /></a>
-<br />
-<small>Swiftproxy - Get 90M+ Clean Residential Proxies provides high-quality residential and static residential proxies designed for Anti-Bot protection, risk control, and multi-account isolation.</small>
-</td>
-</tr>
-</table>
-
 ### Works with
 
 OpenClaw, Claude Code, Cursor, Codex, and any agent that can run shell commands.
