@@ -130,6 +130,23 @@ class TestE2E:
         resp = cmd(daemon, "eval", {"expression": "document.getElementById('name').value"})
         assert resp["data"]["result"] == "E2E-Alice"
 
+    def test_fill_unnamed_textbox_after_named_one(self, daemon):
+        # A ref to an unnamed textbox must not resolve to a named one
+        html = "<label for=email>Email</label><input id=email><input id=unnamed>"
+        cmd(daemon, "open", {"url": "data:text/html," + quote(html)}, tab="unnamed")
+        snap = cmd(daemon, "snapshot", tab="unnamed")["data"]["snapshot"]
+        line = next(l for l in snap.split("\n") if l.strip().startswith("- textbox [ref="))
+        ref = "@" + line[line.index("[ref=") + 5:line.index("]")]
+
+        resp = cmd(daemon, "fill", {"ref": ref, "text": "typed"}, tab="unnamed")
+        assert resp["success"] is True
+
+        resp = cmd(daemon, "eval", {
+            "expression": "document.getElementById('email').value + '|' + document.getElementById('unnamed').value",
+        }, tab="unnamed")
+        assert resp["data"]["result"] == "|typed"
+        cmd(daemon, "close", tab="unnamed")
+
     def test_click_button(self, daemon):
         resp = cmd(daemon, "snapshot")
         ref = find_ref(resp["data"]["snapshot"], "button")
