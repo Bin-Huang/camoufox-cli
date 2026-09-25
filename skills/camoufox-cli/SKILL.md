@@ -70,6 +70,7 @@ camoufox-cli type @e1 "text"         # Type without clearing (append)
 camoufox-cli select @e1 "option"     # Select dropdown option
 camoufox-cli check @e1               # Toggle checkbox
 camoufox-cli hover @e1               # Hover over element
+camoufox-cli mouse click 660 380     # Click at viewport coordinates (no ref needed)
 camoufox-cli press Enter             # Press keyboard key
 camoufox-cli press "Control+a"       # Key combination
 
@@ -317,6 +318,20 @@ camoufox-cli snapshot -i
 # Or wait for dynamic content
 camoufox-cli wait 2000
 camoufox-cli snapshot -i
+```
+
+### Element Visible on Screen but Not in Snapshot
+
+A checkbox inside a cross-origin iframe (for example a Cloudflare Turnstile
+"Verify you are human" widget) has no ref. Find it in a screenshot and click by
+coordinates. Coordinates are viewport CSS pixels. At the default
+`devicePixelRatio` of 1, they equal the pixels of a non-`--full` screenshot.
+
+```bash
+camoufox-cli screenshot page.png     # Locate the checkbox in the image
+camoufox-cli mouse click 660 380     # Click its center
+camoufox-cli wait 3000
+camoufox-cli screenshot page.png     # Confirm the check passed
 ```
 
 ### Too Many Elements in Snapshot

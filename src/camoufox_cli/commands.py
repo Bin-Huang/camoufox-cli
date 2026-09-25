@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import math
 
 from .browser import BrowserManager, TabView
 from .protocol import ok_response, error_response
@@ -220,6 +221,23 @@ def _cmd_hover(manager: TabView, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
+def _cmd_mouse_click(manager: TabView, cmd_id: str, params: dict) -> dict:
+    """Click at viewport coordinates.
+
+    Reaches targets that have no ref, such as a checkbox inside a
+    cross-origin iframe (e.g. a Cloudflare Turnstile widget).
+    """
+    try:
+        x = float(params["x"])
+        y = float(params["y"])
+    except (KeyError, TypeError, ValueError):
+        return error_response(cmd_id, "Missing or invalid 'x'/'y' parameters")
+    if not (math.isfinite(x) and math.isfinite(y)):
+        return error_response(cmd_id, "Missing or invalid 'x'/'y' parameters")
+    manager.get_page().mouse.click(x, y)
+    return ok_response(cmd_id)
+
+
 def _cmd_press(manager: TabView, cmd_id: str, params: dict) -> dict:
     key = params.get("key", "")
     if not key:
@@ -389,6 +407,7 @@ _HANDLERS = {
     "select": _cmd_select,
     "check": _cmd_check,
     "hover": _cmd_hover,
+    "mouse_click": _cmd_mouse_click,
     "press": _cmd_press,
     # Data extraction
     "text": _cmd_text,

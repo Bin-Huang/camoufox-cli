@@ -77,6 +77,18 @@ describe("parameter validation", () => {
     expect(resp.success).toBe(false);
   });
 
+  it("mouse_click missing coordinates", async () => {
+    const resp = await execute(manager, { id: "r1", action: "mouse_click", params: { x: 10 } });
+    expect(resp.success).toBe(false);
+    expect(resp.error).toContain("'x'/'y'");
+  });
+
+  it("mouse_click invalid coordinates", async () => {
+    const resp = await execute(manager, { id: "r1", action: "mouse_click", params: { x: "abc", y: 10 } });
+    expect(resp.success).toBe(false);
+    expect(resp.error).toContain("'x'/'y'");
+  });
+
   it("press missing key", async () => {
     const resp = await execute(manager, { id: "r1", action: "press", params: {} });
     expect(resp.success).toBe(false);
@@ -174,7 +186,7 @@ describe("handler dispatch table coverage", () => {
     const manager = new BrowserManager();
     const knownActions = [
       "open", "back", "forward", "reload", "url", "title", "close",
-      "snapshot", "click", "fill", "type", "select", "check", "hover", "press",
+      "snapshot", "click", "fill", "type", "select", "check", "hover", "mouse_click", "press",
       "text", "eval", "screenshot", "pdf", "scroll", "wait",
       "tabs", "switch", "cookies",
     ];

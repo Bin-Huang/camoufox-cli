@@ -244,6 +244,18 @@ def build_command(action: str, rest: list[str]) -> dict:
         case "hover":
             ref = _require(rest, 1, "Usage: camoufox-cli hover @e1")
             return {"id": "r1", "action": "hover", "params": {"ref": ref}}
+        case "mouse":
+            usage = "Usage: camoufox-cli mouse click <x> <y>"
+            if _require(rest, 1, usage) != "click":
+                print(usage, file=sys.stderr)
+                sys.exit(1)
+            try:
+                x = float(_require(rest, 2, usage))
+                y = float(_require(rest, 3, usage))
+            except ValueError:
+                print(usage, file=sys.stderr)
+                sys.exit(1)
+            return {"id": "r1", "action": "mouse_click", "params": {"x": x, "y": y}}
         case "press":
             key = _require(rest, 1, "Usage: camoufox-cli press Enter")
             return {"id": "r1", "action": "press", "params": {"key": key}}
@@ -559,6 +571,7 @@ Interaction:
   select @ref "option"    Select dropdown option
   check @ref              Toggle checkbox
   hover @ref              Hover over element
+  mouse click <x> <y>     Click at viewport coordinates (no ref needed)
   press <key>             Press key (e.g. Enter, Control+a)
 
 Data:

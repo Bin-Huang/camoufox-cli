@@ -124,6 +124,20 @@ describe("e2e", { timeout: 120_000 }, () => {
     expect(evalResp.data.result).toBe("clicked");
   });
 
+  it("mouse click at button center", async () => {
+    await cmd(SOCK_PATH, "eval", { expression: "document.getElementById('output').textContent = ''" });
+    const box = await cmd(SOCK_PATH, "eval", {
+      expression: "(() => { const r = document.getElementById('btn').getBoundingClientRect(); return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 }); })()",
+    });
+    const { x, y } = JSON.parse(box.data.result);
+
+    const clickResp = await cmd(SOCK_PATH, "mouse_click", { x, y });
+    expect(clickResp.success).toBe(true);
+
+    const evalResp = await cmd(SOCK_PATH, "eval", { expression: "document.getElementById('output').textContent" });
+    expect(evalResp.data.result).toBe("clicked");
+  });
+
   it("select dropdown", async () => {
     const snap = await cmd(SOCK_PATH, "snapshot");
     const ref = findRef(snap.data.snapshot, "combobox");
