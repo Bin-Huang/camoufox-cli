@@ -14,7 +14,20 @@ const INTERACTIVE_ROLES = new Set([
   "select", "listbox", "searchbox",
 ]);
 
-const ARIA_LINE_RE = /^(\s*-\s+)(\w+)(?:\s+"([^"]*)")?/;
+// Playwright renders each node as `- role "name"`, with the name JSON-encoded.
+// If the key contains YAML-special text (e.g. ": " or " #"), the whole key is
+// wrapped in YAML single quotes, with ' escaped as ''.
+const ARIA_ITEM_RE = /^\s*-\s+(?:'((?:[^']|'')*)'|(.*))/;
+const ARIA_KEY_RE = /^(\w+)(?:\s+("(?:[^"\\]|\\.)*"))?/;
+
+function parseAriaLine(line: string): { role: string; name: string } | null {
+  const item = line.match(ARIA_ITEM_RE);
+  if (!item) return null;
+  const key = item[1] !== undefined ? item[1].replace(/''/g, "'") : item[2];
+  const m = key.match(ARIA_KEY_RE);
+  if (!m) return null;
+  return { role: m[1], name: m[2] ? JSON.parse(m[2]) : "" };
+}
 
 export class RefRegistry {
   private entries = new Map<string, RefEntry>();
@@ -29,14 +42,13 @@ export class RefRegistry {
     const resultLines: string[] = [];
 
     for (const line of lines) {
-      const m = line.match(ARIA_LINE_RE);
-      if (!m) {
+      const parsed = parseAriaLine(line);
+      if (!parsed) {
         if (!interactiveOnly) resultLines.push(line);
         continue;
       }
 
-      const role = m[2];
-      const name = m[3] || "";
+      const { role, name } = parsed;
 
       if (interactiveOnly && !INTERACTIVE_ROLES.has(role)) continue;
 
