@@ -171,6 +171,18 @@ const cmdHover: Handler = async (manager, cmdId, params) => {
   return okResponse(cmdId);
 };
 
+// Click at viewport coordinates. Reaches targets that have no ref, such as a
+// checkbox inside a cross-origin iframe (e.g. a Cloudflare Turnstile widget).
+const cmdMouseClick: Handler = async (manager, cmdId, params) => {
+  const x = Number(params.x);
+  const y = Number(params.y);
+  if (params.x == null || params.y == null || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return errorResponse(cmdId, "Missing or invalid 'x'/'y' parameters");
+  }
+  await (await manager.getPage()).mouse.click(x, y);
+  return okResponse(cmdId);
+};
+
 const cmdPress: Handler = async (manager, cmdId, params) => {
   const key = params.key as string;
   if (!key) return errorResponse(cmdId, "Missing 'key' parameter");
@@ -333,6 +345,7 @@ const HANDLERS: Record<string, Handler> = {
   select: cmdSelect,
   check: cmdCheck,
   hover: cmdHover,
+  mouse_click: cmdMouseClick,
   press: cmdPress,
   text: cmdText,
   eval: cmdEval,

@@ -34,6 +34,7 @@ camoufox-cli type @e1 "text"         # Type without clearing (append)
 camoufox-cli select @e1 "value"      # Select dropdown option
 camoufox-cli check @e1               # Toggle checkbox
 camoufox-cli hover @e1               # Hover over element
+camoufox-cli mouse click 660 380     # Click at viewport coordinates (no ref needed)
 camoufox-cli press Enter             # Press key
 camoufox-cli press "Control+a"       # Key combination
 ```

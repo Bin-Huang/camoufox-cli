@@ -1,5 +1,6 @@
 """Tests for command dispatch and execution logic."""
 
+import json
 import os
 
 import pytest
@@ -71,6 +72,16 @@ class TestCommandValidation:
     def test_hover_missing_ref(self):
         resp = execute(self.manager, {"id": "r1", "action": "hover", "params": {}})
         assert resp["success"] is False
+
+    def test_mouse_click_missing_coordinates(self):
+        resp = execute(self.manager, {"id": "r1", "action": "mouse_click", "params": {"x": 10}})
+        assert resp["success"] is False
+        assert "'x'/'y'" in resp["error"]
+
+    def test_mouse_click_invalid_coordinates(self):
+        resp = execute(self.manager, {"id": "r1", "action": "mouse_click", "params": {"x": "abc", "y": 10}})
+        assert resp["success"] is False
+        assert "'x'/'y'" in resp["error"]
 
     def test_press_missing_key(self):
         resp = execute(self.manager, {"id": "r1", "action": "press", "params": {}})
@@ -477,6 +488,23 @@ class TestFixtureIntegration:
             "id": "r2", "action": "click",
             "params": {"ref": f"@{entry.ref}"},
         })
+        assert resp["success"] is True
+        resp = execute(self.manager, {
+            "id": "r3", "action": "eval",
+            "params": {"expression": "document.getElementById('output').textContent"},
+        })
+        assert resp["data"]["result"] == "clicked"
+
+    @pytest.mark.integration
+    def test_mouse_click_at_button_center(self):
+        """Click by viewport coordinates, without a ref."""
+        resp = execute(self.manager, {
+            "id": "r1", "action": "eval",
+            "params": {"expression": "(() => { const r = document.getElementById('btn').getBoundingClientRect();"
+                                     " return JSON.stringify({x: r.x + r.width / 2, y: r.y + r.height / 2}); })()"},
+        })
+        box = json.loads(resp["data"]["result"])
+        resp = execute(self.manager, {"id": "r2", "action": "mouse_click", "params": box})
         assert resp["success"] is True
         resp = execute(self.manager, {
             "id": "r3", "action": "eval",
