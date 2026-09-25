@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 
@@ -22,13 +23,29 @@ INTERACTIVE_ROLES = frozenset({
     "select", "listbox", "searchbox",
 })
 
-# Pattern to match aria snapshot lines like:  - link "About"
-#   handles nested indentation and optional attributes
-_ARIA_LINE_RE = re.compile(
-    r'^(\s*-\s+)'           # leading indent + dash
-    r'(\w+)'                # role
-    r'(?:\s+"([^"]*)")?'    # optional quoted name
+# Playwright renders each node as `- role "name"`, with the name JSON-encoded.
+# If the key contains YAML-special text (e.g. ": " or " #"), the whole key is
+# wrapped in YAML single quotes, with ' escaped as ''.
+_ARIA_ITEM_RE = re.compile(
+    r"^\s*-\s+"                     # leading indent + dash
+    r"(?:'((?:[^']|'')*)'|(.*))"     # single-quoted key, or plain key
 )
+_ARIA_KEY_RE = re.compile(
+    r'^(\w+)'                        # role
+    r'(?:\s+("(?:[^"\\]|\\.)*"))?'   # optional JSON-encoded name
+)
+
+
+def _parse_aria_line(line: str) -> tuple[str, str] | None:
+    """Return (role, name) for an aria snapshot node line, or None."""
+    item = _ARIA_ITEM_RE.match(line)
+    if not item:
+        return None
+    key = item.group(1).replace("''", "'") if item.group(1) is not None else item.group(2)
+    m = _ARIA_KEY_RE.match(key)
+    if not m:
+        return None
+    return m.group(1), json.loads(m.group(2)) if m.group(2) else ""
 
 
 class RefRegistry:
@@ -49,14 +66,13 @@ class RefRegistry:
         result_lines = []
 
         for line in lines:
-            m = _ARIA_LINE_RE.match(line)
-            if not m:
+            parsed = _parse_aria_line(line)
+            if parsed is None:
                 if not interactive_only:
                     result_lines.append(line)
                 continue
 
-            role = m.group(2)
-            name = m.group(3) or ""
+            role, name = parsed
 
             if interactive_only and role not in INTERACTIVE_ROLES:
                 continue
