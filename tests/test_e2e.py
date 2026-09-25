@@ -7,6 +7,7 @@ import socket
 import threading
 import time
 from unittest.mock import patch
+from urllib.parse import quote
 
 import pytest
 
@@ -138,6 +139,29 @@ class TestE2E:
 
         resp = cmd(daemon, "eval", {"expression": "document.getElementById('output').textContent"})
         assert resp["data"]["result"] == "clicked"
+
+    def test_click_link_runs_page_handler(self, daemon):
+        # href="#" + onclick: the page's handler must run, with no navigation.
+        html = "<a href='#' onclick=\"document.title='handled'; return false\">Go</a>"
+        cmd(daemon, "open", {"url": "data:text/html," + quote(html)}, tab="link-handler")
+        resp = cmd(daemon, "snapshot", tab="link-handler")
+        ref = find_ref(resp["data"]["snapshot"], "link")
+
+        resp = cmd(daemon, "click", {"ref": ref}, tab="link-handler")
+        assert resp["success"] is True
+        assert cmd(daemon, "title", tab="link-handler")["data"]["title"] == "handled"
+        assert not cmd(daemon, "url", tab="link-handler")["data"]["url"].endswith("#")
+
+    def test_click_blank_target_link_navigates(self, daemon):
+        # Camoufox ignores target="_blank" clicks; the link must still navigate.
+        html = f"<a href='{FIXTURE_URL}' target='_blank'>Next</a>"
+        cmd(daemon, "open", {"url": "data:text/html," + quote(html)}, tab="link-nav")
+        resp = cmd(daemon, "snapshot", tab="link-nav")
+        ref = find_ref(resp["data"]["snapshot"], "link")
+
+        resp = cmd(daemon, "click", {"ref": ref}, tab="link-nav")
+        assert resp["success"] is True
+        assert "fixture.html" in cmd(daemon, "url", tab="link-nav")["data"]["url"]
 
     def test_mouse_click_at_button_center(self, daemon):
         cmd(daemon, "eval", {"expression": "document.getElementById('output').textContent = ''"})

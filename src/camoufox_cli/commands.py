@@ -149,6 +149,27 @@ def _cmd_snapshot(manager: TabView, cmd_id: str, params: dict) -> dict:
 # Interaction
 # ---------------------------------------------------------------------------
 
+# DOM-click the element and return the href the caller must navigate to, or
+# null. For links, a window-level listener runs after the page's own handlers:
+# if none of them called preventDefault() (onclick, SPA routers), it cancels
+# the native navigation and returns the href. closest() finds the <a> when the
+# locator resolves to a child element.
+_CLICK_JS = """el => {
+    const link = el.closest('a');
+    if (!(link instanceof HTMLAnchorElement) || !link.href || link.protocol === 'javascript:') {
+        el.click();
+        return null;
+    }
+    let href = null;
+    const probe = e => {
+        if (!e.defaultPrevented) { e.preventDefault(); href = link.href; }
+    };
+    window.addEventListener('click', probe);
+    try { el.click(); } finally { window.removeEventListener('click', probe); }
+    return href;
+}"""
+
+
 def _cmd_click(manager: TabView, cmd_id: str, params: dict) -> dict:
     ref_str = params.get("ref", "")
     if not ref_str:
@@ -157,16 +178,15 @@ def _cmd_click(manager: TabView, cmd_id: str, params: dict) -> dict:
     page = manager.get_page()
     url_before = page.url
 
-    # Navigate via page.goto() for links, el.click() for other elements.
-    # This avoids two Camoufox issues:
+    # Click via el.click() and navigate links via page.goto(). This avoids two
+    # Camoufox issues:
     # 1. Playwright's .click() times out when sticky headers/overlays intercept pointer events
     # 2. Camoufox ignores target="_blank" clicks (both .click() and el.click() silently fail)
-    # Walk up the DOM to find <a> ancestor since the locator may resolve to a child element.
-    link_href = locator.evaluate("el => { while (el) { if (el.tagName === 'A') return el.href; el = el.parentElement; } return null; }")
+    # Links still get the click first, so page handlers that take it over
+    # (href="#" + onclick, SPA routing) work; see _CLICK_JS.
+    link_href = locator.evaluate(_CLICK_JS)
     if link_href:
         page.goto(link_href, wait_until="domcontentloaded")
-    else:
-        locator.evaluate("el => el.click()")
 
     url_after = page.url
     if url_after != url_before:
