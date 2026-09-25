@@ -247,6 +247,27 @@ describe("e2e", { timeout: 120_000 }, () => {
     expect(fillResp.success).toBe(true);
   });
 
+  it("scoped snapshot refs resolve within the scope", async () => {
+    // The same "Delete" button appears outside the scope, before it
+    const html = "<header><button>Delete</button></header>"
+      + "<ul id=list><li><button>Delete</button></li></ul><p id=out></p>"
+      + "<script>for (const b of document.querySelectorAll('button'))"
+      + " b.onclick = () => { out.textContent = b.closest('ul') ? 'list' : 'header'; };</script>";
+    await cmd(SOCK_PATH, "open", { url: "data:text/html," + encodeURIComponent(html) }, "r1", "scoped");
+    // Scope root below the list: the ref is a descendant of the scope.
+    // Scope root on the button itself: the ref is the scope element.
+    for (const selector of ["#list", "#list button"]) {
+      await cmd(SOCK_PATH, "eval", { expression: "document.getElementById('out').textContent = ''" }, "r1", "scoped");
+      const snap = await cmd(SOCK_PATH, "snapshot", { interactive: true, selector }, "r1", "scoped");
+      const ref = findRef(snap.data.snapshot, "button");
+      const resp = await cmd(SOCK_PATH, "click", { ref }, "r1", "scoped");
+      expect(resp.success).toBe(true);
+      const evalResp = await cmd(SOCK_PATH, "eval", { expression: "document.getElementById('out').textContent" }, "r1", "scoped");
+      expect(evalResp.data.result, selector).toBe("list");
+    }
+    await cmd(SOCK_PATH, "close", {}, "r1", "scoped");
+  });
+
   it("history is per tab", async () => {
     await cmd(SOCK_PATH, "open", { url: "data:text/html,<h1>B1</h1>" }, "r1", "b");
     // tab "b" has a single history entry, so back must fail there

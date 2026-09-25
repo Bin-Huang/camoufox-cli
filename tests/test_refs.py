@@ -75,6 +75,13 @@ class TestBuildFromSnapshot:
         assert "plain text line" in result
         assert "[ref=e1]" in result
 
+    def test_scope_is_recorded_and_reset(self):
+        registry = RefRegistry()
+        registry.build_from_snapshot('- button "Delete"', scope="#list")
+        assert registry.scope == "#list"
+        registry.build_from_snapshot('- button "Delete"')
+        assert registry.scope is None
+
     def test_empty_snapshot(self):
         registry = RefRegistry()
         result = registry.build_from_snapshot("")

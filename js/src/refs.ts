@@ -19,10 +19,13 @@ const ARIA_LINE_RE = /^(\s*-\s+)(\w+)(?:\s+"([^"]*)")?/;
 export class RefRegistry {
   private entries = new Map<string, RefEntry>();
   private counter = 0;
+  /** Selector of the scoped snapshot (`snapshot -s`); refs resolve within it. */
+  scope: string | undefined;
 
-  buildFromSnapshot(ariaText: string, interactiveOnly: boolean = false): string {
+  buildFromSnapshot(ariaText: string, interactiveOnly: boolean = false, scope?: string): string {
     this.entries.clear();
     this.counter = 0;
+    this.scope = scope;
 
     const seen = new Map<string, number>();
     const lines = ariaText.split("\n");
