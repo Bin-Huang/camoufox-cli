@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildCommand, getSocketPath, getVersion, parseArgs } from "../src/cli.js";
 import { loadDefaults } from "../src/config.js";
@@ -489,5 +490,24 @@ describe("config file", () => {
     // A different session doesn't pick up the "work" block.
     const { flags: f2 } = parseArgs(["open", "x"]);
     expect(f2.locale).toBeNull();
+  });
+});
+
+describe("daemon spawn", () => {
+  // The daemon must run on the client's own Node binary, not whatever "node"
+  // PATH resolves to. Runs against the built CLI; skips when dist is absent.
+  it("starts the daemon when no node is on PATH", () => {
+    const cliJs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/cli.js");
+    if (!fs.existsSync(cliJs)) return; // needs `npm run build`
+    const session = `spawn-test-${process.pid}-${Date.now()}`;
+    const env = { ...process.env, PATH: fs.mkdtempSync(path.join(os.tmpdir(), "no-node-")) };
+    const run = (...args: string[]) =>
+      spawnSync(process.execPath, [cliJs, "--session", session, ...args], { env, encoding: "utf-8", timeout: 15000 });
+    try {
+      // Before any "open", the daemon answers without launching the browser.
+      expect(run("title").stderr).toContain("Browser not launched");
+    } finally {
+      run("close");
+    }
   });
 });
