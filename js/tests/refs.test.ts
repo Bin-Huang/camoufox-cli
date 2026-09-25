@@ -32,6 +32,26 @@ describe("RefRegistry.buildFromSnapshot", () => {
     expect(e1!.name).toBe("");
   });
 
+  it("decodes escaped quotes and backslashes in names", () => {
+    const registry = new RefRegistry();
+    registry.buildFromSnapshot('- button "Say \\"hi\\""\n- button "a\\\\b"');
+    expect(registry.resolve("e1")!.name).toBe('Say "hi"');
+    expect(registry.resolve("e2")!.name).toBe("a\\b");
+  });
+
+  it("handles single-quoted keys", () => {
+    // Playwright wraps keys containing ": " or " #" in YAML single quotes
+    const registry = new RefRegistry();
+    const aria = "- 'button \"Step 1: Sign in\"'\n  - 'link \"It''s #42\"':\n    - /url: /x";
+    const result = registry.buildFromSnapshot(aria, true);
+    expect(result).toContain("[ref=e1]");
+    expect(result).toContain("[ref=e2]");
+    expect(registry.resolve("e1")!.role).toBe("button");
+    expect(registry.resolve("e1")!.name).toBe("Step 1: Sign in");
+    expect(registry.resolve("e2")!.role).toBe("link");
+    expect(registry.resolve("e2")!.name).toBe("It's #42");
+  });
+
   it("handles nested indentation", () => {
     const registry = new RefRegistry();
     const aria = '- list\n  - listitem\n    - link "Item 1"';

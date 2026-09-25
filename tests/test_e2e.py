@@ -7,6 +7,7 @@ import socket
 import threading
 import time
 from unittest.mock import patch
+from urllib.parse import quote
 
 import pytest
 
@@ -152,6 +153,25 @@ class TestE2E:
 
         resp = cmd(daemon, "eval", {"expression": "document.getElementById('output').textContent"})
         assert resp["data"]["result"] == "clicked"
+
+    def test_click_buttons_with_special_characters_in_name(self, daemon):
+        # Names with quotes, ": " or backslashes are escaped in the aria snapshot
+        html = ("<button id=quote>Say &quot;hi&quot;</button><button id=colon>Step 1: Sign in</button>"
+                "<button id=slash>a\\b</button><p id=out></p>"
+                "<script>for (const b of document.querySelectorAll('button'))"
+                " b.onclick = () => { out.textContent += b.id + ','; };</script>")
+        cmd(daemon, "open", {"url": "data:text/html," + quote(html)}, tab="names")
+        snap = cmd(daemon, "snapshot", {"interactive": True}, tab="names")["data"]["snapshot"]
+        refs = [l[l.index("[ref=") + 5:l.index("]", l.index("[ref="))] for l in snap.split("\n")]
+        assert len(refs) == 3
+
+        for ref in refs:
+            resp = cmd(daemon, "click", {"ref": "@" + ref}, tab="names")
+            assert resp["success"] is True, resp
+
+        resp = cmd(daemon, "eval", {"expression": "document.getElementById('out').textContent"}, tab="names")
+        assert resp["data"]["result"] == "quote,colon,slash,"
+        cmd(daemon, "close", tab="names")
 
     def test_select_dropdown(self, daemon):
         resp = cmd(daemon, "snapshot")
