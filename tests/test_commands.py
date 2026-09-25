@@ -2,11 +2,13 @@
 
 import json
 import os
+from unittest.mock import MagicMock
 
 import pytest
 
-from camoufox_cli.commands import execute
+from camoufox_cli.commands import _resolve_ref, execute
 from camoufox_cli.browser import BrowserManager
+from camoufox_cli.refs import RefRegistry
 
 FIXTURE_URL = "file://" + os.path.join(os.path.dirname(__file__), "fixture.html")
 
@@ -109,6 +111,22 @@ class TestCommandValidation:
         resp = execute(self.manager, {"id": "r1", "action": "pdf", "params": {}})
         assert resp["success"] is False
         assert "path" in resp["error"].lower()
+
+
+class TestResolveRef:
+    """Ref -> locator mapping against a mocked page (no browser)."""
+
+    def test_unnamed_ref_matches_only_unnamed_elements(self):
+        view = MagicMock()
+        view.refs = RefRegistry()
+        view.refs.build_from_snapshot('- textbox "Email"\n- textbox')
+        page = view.get_page.return_value
+
+        _resolve_ref(view, "@e2")
+
+        # nth counts only unnamed textboxes, so the query must be limited to them
+        page.get_by_role.assert_called_once_with("textbox", name="", exact=True)
+        page.get_by_role.return_value.nth.assert_called_once_with(0)
 
 
 class TestBrowserNotLaunched:

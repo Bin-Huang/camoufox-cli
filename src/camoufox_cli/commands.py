@@ -42,10 +42,10 @@ def _resolve_ref(manager: TabView, ref_str: str):
     if entry is None:
         raise ValueError(f"Ref @{ref_str.lstrip('@')} not found. Run 'camoufox-cli snapshot' to refresh refs.")
     page = manager.get_page()
-    if entry.name:
-        locator = page.get_by_role(entry.role, name=entry.name, exact=True)  # type: ignore[arg-type]
-    else:
-        locator = page.get_by_role(entry.role)  # type: ignore[arg-type]
+    # Always filter by the exact name, even when it is empty: nth counts only
+    # elements with this exact name, so an unfiltered role query would pick
+    # the wrong element when named and unnamed elements share a role.
+    locator = page.get_by_role(entry.role, name=entry.name, exact=True)  # type: ignore[arg-type]
     return locator.nth(entry.nth)
 
 

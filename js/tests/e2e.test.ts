@@ -113,6 +113,24 @@ describe("e2e", { timeout: 120_000 }, () => {
     expect(evalResp.data.result).toBe("E2E-Alice");
   });
 
+  it("fill unnamed textbox after a named one", async () => {
+    // A ref to an unnamed textbox must not resolve to a named one
+    const html = "<label for=email>Email</label><input id=email><input id=unnamed>";
+    await cmd(SOCK_PATH, "open", { url: "data:text/html," + encodeURIComponent(html) }, "r1", "unnamed");
+    const snap = await cmd(SOCK_PATH, "snapshot", {}, "r1", "unnamed");
+    const line = snap.data.snapshot.split("\n").find((l: string) => l.trim().startsWith("- textbox [ref="))!;
+    const ref = "@" + line.slice(line.indexOf("[ref=") + 5, line.indexOf("]"));
+
+    const fillResp = await cmd(SOCK_PATH, "fill", { ref, text: "typed" }, "r1", "unnamed");
+    expect(fillResp.success).toBe(true);
+
+    const evalResp = await cmd(SOCK_PATH, "eval", {
+      expression: "document.getElementById('email').value + '|' + document.getElementById('unnamed').value",
+    }, "r1", "unnamed");
+    expect(evalResp.data.result).toBe("|typed");
+    await cmd(SOCK_PATH, "close", {}, "r1", "unnamed");
+  });
+
   it("click button", async () => {
     const snap = await cmd(SOCK_PATH, "snapshot");
     const ref = findRef(snap.data.snapshot, "button");
