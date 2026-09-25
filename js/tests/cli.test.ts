@@ -523,4 +523,21 @@ describe("daemon spawn", () => {
       fs.rmSync(pidPath, { force: true });
     }
   }, 20000);
+
+  // The daemon must run on the client's own Node binary, not whatever "node"
+  // PATH resolves to. Runs against the built CLI; skips when dist is absent.
+  it("starts the daemon when no node is on PATH", () => {
+    const cliJs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/cli.js");
+    if (!fs.existsSync(cliJs)) return; // needs `npm run build`
+    const session = `spawn-test-${process.pid}-${Date.now()}`;
+    const env = { ...process.env, PATH: fs.mkdtempSync(path.join(os.tmpdir(), "no-node-")) };
+    const run = (...args: string[]) =>
+      spawnSync(process.execPath, [cliJs, "--session", session, ...args], { env, encoding: "utf-8", timeout: 15000 });
+    try {
+      // Before any "open", the daemon answers without launching the browser.
+      expect(run("title").stderr).toContain("Browser not launched");
+    } finally {
+      run("close");
+    }
+  });
 });
