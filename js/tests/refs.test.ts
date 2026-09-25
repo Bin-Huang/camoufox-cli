@@ -83,6 +83,14 @@ describe("RefRegistry.buildFromSnapshot", () => {
     expect(result).toContain("[ref=e1]");
   });
 
+  it("records and resets the snapshot scope", () => {
+    const registry = new RefRegistry();
+    registry.buildFromSnapshot('- button "Delete"', false, "#list");
+    expect(registry.scope).toBe("#list");
+    registry.buildFromSnapshot('- button "Delete"');
+    expect(registry.scope).toBeUndefined();
+  });
+
   it("handles empty snapshot", () => {
     const registry = new RefRegistry();
     const result = registry.buildFromSnapshot("");

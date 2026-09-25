@@ -7,6 +7,7 @@ import socket
 import threading
 import time
 from unittest.mock import patch
+from urllib.parse import quote
 
 import pytest
 
@@ -252,6 +253,25 @@ class TestE2E:
 
         resp = cmd(daemon, "fill", {"ref": ref, "text": "still-works"})
         assert resp["success"] is True
+
+    def test_scoped_snapshot_refs_resolve_within_scope(self, daemon):
+        # The same "Delete" button appears outside the scope, before it
+        html = ("<header><button>Delete</button></header>"
+                "<ul id=list><li><button>Delete</button></li></ul><p id=out></p>"
+                "<script>for (const b of document.querySelectorAll('button'))"
+                " b.onclick = () => { out.textContent = b.closest('ul') ? 'list' : 'header'; };</script>")
+        cmd(daemon, "open", {"url": "data:text/html," + quote(html)}, tab="scoped")
+        # Scope root below the list: the ref is a descendant of the scope.
+        # Scope root on the button itself: the ref is the scope element.
+        for selector in ("#list", "#list button"):
+            cmd(daemon, "eval", {"expression": "document.getElementById('out').textContent = ''"}, tab="scoped")
+            snap = cmd(daemon, "snapshot", {"interactive": True, "selector": selector}, tab="scoped")
+            ref = find_ref(snap["data"]["snapshot"], "button")
+            resp = cmd(daemon, "click", {"ref": ref}, tab="scoped")
+            assert resp["success"] is True, resp
+            resp = cmd(daemon, "eval", {"expression": "document.getElementById('out').textContent"}, tab="scoped")
+            assert resp["data"]["result"] == "list", selector
+        cmd(daemon, "close", tab="scoped")
 
     def test_history_is_per_tab(self, daemon):
         cmd(daemon, "open", {"url": "data:text/html,<h1>B1</h1>"}, tab="b")

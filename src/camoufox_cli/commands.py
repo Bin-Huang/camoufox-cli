@@ -42,10 +42,19 @@ def _resolve_ref(manager: TabView, ref_str: str):
     if entry is None:
         raise ValueError(f"Ref @{ref_str.lstrip('@')} not found. Run 'camoufox-cli snapshot' to refresh refs.")
     page = manager.get_page()
-    if entry.name:
-        locator = page.get_by_role(entry.role, name=entry.name, exact=True)  # type: ignore[arg-type]
-    else:
-        locator = page.get_by_role(entry.role)  # type: ignore[arg-type]
+
+    def by_role(root):
+        if entry.name:
+            return root.get_by_role(entry.role, name=entry.name, exact=True)  # type: ignore[arg-type]
+        return root.get_by_role(entry.role)  # type: ignore[arg-type]
+
+    locator = by_role(page)
+    scope = manager.refs.scope
+    if scope:
+        # nth was counted within the scoped snapshot, which includes the scope
+        # element itself, so resolve within the same subtree.
+        root = page.locator(scope)
+        locator = root.and_(locator).or_(by_role(root))
     return locator.nth(entry.nth)
 
 
@@ -141,7 +150,7 @@ def _cmd_snapshot(manager: TabView, cmd_id: str, params: dict) -> dict:
 
     target = page.locator(selector) if selector else page.locator("body")
     aria_text = target.aria_snapshot()
-    annotated = manager.refs.build_from_snapshot(aria_text, interactive_only=interactive)
+    annotated = manager.refs.build_from_snapshot(aria_text, interactive_only=interactive, scope=selector)
     return ok_response(cmd_id, {"snapshot": annotated})
 
 

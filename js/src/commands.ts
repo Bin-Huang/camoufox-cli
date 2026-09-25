@@ -1,6 +1,6 @@
 /** Command implementations for the daemon. */
 
-import type { Locator } from "playwright-core";
+import type { Locator, Page } from "playwright-core";
 import { BrowserManager, TabView } from "./browser.js";
 import { okResponse, errorResponse, type Response } from "./protocol.js";
 
@@ -12,7 +12,15 @@ async function resolveRef(manager: TabView, refStr: string): Promise<Locator> {
     throw new Error(`Ref @${refStr.replace(/^@/, "")} not found. Run 'camoufox-cli snapshot' to refresh refs.`);
   }
   const page = (await manager.getPage());
-  const locator = page.getByRole(entry.role as any, { name: entry.name, exact: true });
+  const byRole = (root: Page | Locator) => root.getByRole(entry.role as any, { name: entry.name, exact: true });
+  let locator = byRole(page);
+  const scope = manager.refs.scope;
+  if (scope) {
+    // nth was counted within the scoped snapshot, which includes the scope
+    // element itself, so resolve within the same subtree.
+    const root = page.locator(scope);
+    locator = root.and(locator).or(byRole(root));
+  }
   return locator.nth(entry.nth);
 }
 
@@ -106,7 +114,7 @@ const cmdSnapshot: Handler = async (manager, cmdId, params) => {
 
   const target = selector ? page.locator(selector) : page.locator("body");
   const ariaText = await target.ariaSnapshot();
-  const annotated = manager.refs.buildFromSnapshot(ariaText, interactive);
+  const annotated = manager.refs.buildFromSnapshot(ariaText, interactive, selector);
   return okResponse(cmdId, { snapshot: annotated });
 };
 

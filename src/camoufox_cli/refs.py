@@ -35,11 +35,13 @@ class RefRegistry:
     def __init__(self):
         self._entries: dict[str, RefEntry] = {}  # ref_str -> RefEntry
         self._counter = 0
+        self.scope: str | None = None  # selector of a scoped snapshot; refs resolve within it
 
-    def build_from_snapshot(self, aria_text: str, interactive_only: bool = False) -> str:
+    def build_from_snapshot(self, aria_text: str, interactive_only: bool = False, scope: str | None = None) -> str:
         """Parse aria snapshot text, assign refs, return annotated text."""
         self._entries.clear()
         self._counter = 0
+        self.scope = scope
 
         # Track role+name occurrences for nth disambiguation
         seen: dict[tuple[str, str], int] = {}
