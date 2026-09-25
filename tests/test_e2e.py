@@ -139,6 +139,20 @@ class TestE2E:
         resp = cmd(daemon, "eval", {"expression": "document.getElementById('output').textContent"})
         assert resp["data"]["result"] == "clicked"
 
+    def test_mouse_click_at_button_center(self, daemon):
+        cmd(daemon, "eval", {"expression": "document.getElementById('output').textContent = ''"})
+        resp = cmd(daemon, "eval", {
+            "expression": "(() => { const r = document.getElementById('btn').getBoundingClientRect();"
+                          " return JSON.stringify({x: r.x + r.width / 2, y: r.y + r.height / 2}); })()",
+        })
+        box = json.loads(resp["data"]["result"])
+
+        resp = cmd(daemon, "mouse_click", box)
+        assert resp["success"] is True
+
+        resp = cmd(daemon, "eval", {"expression": "document.getElementById('output').textContent"})
+        assert resp["data"]["result"] == "clicked"
+
     def test_select_dropdown(self, daemon):
         resp = cmd(daemon, "snapshot")
         ref = find_ref(resp["data"]["snapshot"], "combobox")

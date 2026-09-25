@@ -111,6 +111,12 @@ describe("buildCommand", () => {
     expect((cmd.params as any).ref).toBe("@e1");
   });
 
+  it("mouse click", () => {
+    const cmd = buildCommand("mouse", ["mouse", "click", "660", "380.5"]);
+    expect(cmd.action).toBe("mouse_click");
+    expect(cmd.params).toEqual({ x: 660, y: 380.5 });
+  });
+
   it("press", () => {
     const cmd = buildCommand("press", ["press", "Enter"]);
     expect((cmd.params as any).key).toBe("Enter");
@@ -238,6 +244,18 @@ describe("buildCommand", () => {
 
   it("click missing ref exits", () => {
     expect(() => buildCommand("click", ["click"])).toThrow("process.exit");
+  });
+
+  it("mouse click missing y exits", () => {
+    expect(() => buildCommand("mouse", ["mouse", "click", "10"])).toThrow("process.exit");
+  });
+
+  it("mouse click non-numeric coordinate exits", () => {
+    expect(() => buildCommand("mouse", ["mouse", "click", "10", "abc"])).toThrow("process.exit");
+  });
+
+  it("mouse unknown subcommand exits", () => {
+    expect(() => buildCommand("mouse", ["mouse", "move", "10", "20"])).toThrow("process.exit");
   });
 
   it("fill missing text exits", () => {

@@ -100,9 +100,15 @@ camoufox-cli type @e3 "append text"       # Type without clearing
 camoufox-cli select @e5 "option text"     # Select dropdown option
 camoufox-cli check @e6                    # Toggle checkbox
 camoufox-cli hover @e2                    # Hover over element
+camoufox-cli mouse click 660 380          # Click at viewport coordinates
 camoufox-cli press Enter                  # Press keyboard key
 camoufox-cli press "Control+a"            # Key combination
 ```
+
+`mouse click` reaches elements that have no ref, such as a checkbox inside a
+cross-origin iframe (for example a Cloudflare Turnstile widget). Coordinates are
+viewport CSS pixels. At the default `devicePixelRatio` of 1, they equal the pixels
+of a non-`--full` screenshot.
 
 ### Data Extraction
 

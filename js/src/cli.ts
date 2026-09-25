@@ -236,6 +236,20 @@ export function buildCommand(action: string, rest: string[]): Record<string, unk
       return { id: "r1", action: "check", params: { ref: require_(rest, 1, "Usage: camoufox-cli check @e1") } };
     case "hover":
       return { id: "r1", action: "hover", params: { ref: require_(rest, 1, "Usage: camoufox-cli hover @e1") } };
+    case "mouse": {
+      const usage = "Usage: camoufox-cli mouse click <x> <y>";
+      if (require_(rest, 1, usage) !== "click") {
+        process.stderr.write(usage + "\n");
+        process.exit(1);
+      }
+      const x = Number(require_(rest, 2, usage));
+      const y = Number(require_(rest, 3, usage));
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        process.stderr.write(usage + "\n");
+        process.exit(1);
+      }
+      return { id: "r1", action: "mouse_click", params: { x, y } };
+    }
     case "press":
       return { id: "r1", action: "press", params: { key: require_(rest, 1, "Usage: camoufox-cli press Enter") } };
 
@@ -550,6 +564,7 @@ Interaction:
   select @ref "option"    Select dropdown option
   check @ref              Toggle checkbox
   hover @ref              Hover over element
+  mouse click <x> <y>     Click at viewport coordinates (no ref needed)
   press <key>             Press key (e.g. Enter, Control+a)
 
 Data:

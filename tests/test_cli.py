@@ -99,6 +99,11 @@ class TestBuildCommand:
         cmd = build_command("hover", ["hover", "@e1"])
         assert cmd["params"]["ref"] == "@e1"
 
+    def test_mouse_click(self):
+        cmd = build_command("mouse", ["mouse", "click", "660", "380.5"])
+        assert cmd["action"] == "mouse_click"
+        assert cmd["params"] == {"x": 660.0, "y": 380.5}
+
     def test_press(self):
         cmd = build_command("press", ["press", "Enter"])
         assert cmd["params"]["key"] == "Enter"
@@ -188,6 +193,18 @@ class TestBuildCommand:
     def test_click_missing_ref(self):
         with pytest.raises(SystemExit):
             build_command("click", ["click"])
+
+    def test_mouse_click_missing_y(self):
+        with pytest.raises(SystemExit):
+            build_command("mouse", ["mouse", "click", "10"])
+
+    def test_mouse_click_non_numeric(self):
+        with pytest.raises(SystemExit):
+            build_command("mouse", ["mouse", "click", "10", "abc"])
+
+    def test_mouse_unknown_subcommand(self):
+        with pytest.raises(SystemExit):
+            build_command("mouse", ["mouse", "move", "10", "20"])
 
     def test_fill_missing_text(self):
         with pytest.raises(SystemExit):
