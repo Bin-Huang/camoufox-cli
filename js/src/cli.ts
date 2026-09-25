@@ -67,7 +67,10 @@ function spawnDaemon(session: string, headed: boolean, timeout: number, persiste
   const errPath = path.join(os.tmpdir(), `camoufox-cli-daemon-${process.pid}-${Date.now()}.log`);
   const errFd = fs.openSync(errPath, "w+");
   fs.unlinkSync(errPath);
-  spawn("node", [daemonPath, ...args], {
+  // Run the daemon on this very Node binary. A bare "node" resolves via PATH,
+  // which may be missing, too old, or a version-manager shim (volta, asdf)
+  // that picks a different Node, and the daemon then dies silently.
+  spawn(process.execPath, [daemonPath, ...args], {
     detached: true,
     stdio: ["ignore", "ignore", errFd],
   }).unref();
