@@ -32,6 +32,24 @@ class TestBuildFromSnapshot:
         assert entry.role == "img"
         assert entry.name == ""
 
+    def test_name_with_escaped_quotes_and_backslash(self):
+        registry = RefRegistry()
+        registry.build_from_snapshot('- button "Say \\"hi\\""\n- button "a\\\\b"')
+        assert registry.resolve("e1").name == 'Say "hi"'
+        assert registry.resolve("e2").name == "a\\b"
+
+    def test_single_quoted_key(self):
+        # Playwright wraps keys containing ": " or " #" in YAML single quotes
+        registry = RefRegistry()
+        aria = "- 'button \"Step 1: Sign in\"'\n  - 'link \"It''s #42\"':\n    - /url: /x"
+        result = registry.build_from_snapshot(aria, interactive_only=True)
+        assert "[ref=e1]" in result
+        assert "[ref=e2]" in result
+        assert registry.resolve("e1").role == "button"
+        assert registry.resolve("e1").name == "Step 1: Sign in"
+        assert registry.resolve("e2").role == "link"
+        assert registry.resolve("e2").name == "It's #42"
+
     def test_nested_indentation(self):
         registry = RefRegistry()
         aria = '- list\n  - listitem\n    - link "Item 1"'
