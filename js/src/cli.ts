@@ -42,7 +42,10 @@ function spawnDaemon(session: string, headed: boolean, timeout: number, persiste
   if (!geoip) args.push("--no-geoip");
   if (locale) args.push("--locale", locale);
 
-  spawn("node", [daemonPath, ...args], {
+  // Run the daemon on this very Node binary. A bare "node" resolves via PATH,
+  // which may be missing, too old, or a version-manager shim (volta, asdf)
+  // that picks a different Node, and the daemon then dies silently.
+  spawn(process.execPath, [daemonPath, ...args], {
     detached: true,
     stdio: "ignore",
   }).unref();
