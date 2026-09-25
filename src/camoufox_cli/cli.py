@@ -7,16 +7,36 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 
 from .config import load_defaults
 
 
 SOCKET_PREFIX = "/tmp/camoufox-cli-"
+# A unix socket path must fit in sun_path: 104 bytes on macOS (108 on Linux),
+# including the terminating NUL.
+_MAX_SOCKET_PATH_BYTES = 103
 
 
 def get_socket_path(session: str) -> str:
     return f"{SOCKET_PREFIX}{session}.sock"
+
+
+def session_name_error(session: str) -> str | None:
+    """Why ``session`` cannot be used as a session name, or None if it can.
+
+    The name becomes part of the daemon's /tmp socket, pid and lock file names
+    and of the default --persistent profile path.
+    """
+    if session in ("", ".", ".."):
+        return "must be a non-empty name other than '.' or '..'"
+    if "/" in session:
+        return "must not contain '/'"
+    max_bytes = _MAX_SOCKET_PATH_BYTES - len(get_socket_path("").encode())
+    if len(session.encode()) > max_bytes:
+        return f"must be at most {max_bytes} bytes (unix socket path limit)"
+    return None
 
 
 def send_command(sock_path: str, command: dict) -> dict:
@@ -47,21 +67,30 @@ def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | Non
     if locale:
         cmd.extend(["--locale", locale])
 
-    subprocess.Popen(
-        cmd,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    # The daemon writes stderr to an anonymous temp file, so a failed start can
+    # report its real cause instead of only a timeout.
+    with tempfile.TemporaryFile() as err:
+        subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=err,
+            start_new_session=True,
+        )
 
-    sock_path = get_socket_path(session)
-    for _ in range(50):
-        if os.path.exists(sock_path):
-            return
-        time.sleep(0.1)
+        sock_path = get_socket_path(session)
+        for _ in range(50):
+            if os.path.exists(sock_path):
+                return
+            time.sleep(0.1)
+
+        # pread: the daemon shares this file's offset, so do not seek it.
+        output = os.pread(err.fileno(), os.fstat(err.fileno()).st_size, 0)
 
     print("Error: Daemon did not start within 5 seconds", file=sys.stderr)
+    output_lines = output.decode(errors="replace").strip().splitlines()
+    if output_lines:
+        print("Daemon output:\n" + "\n".join(output_lines[-20:]), file=sys.stderr)
     sys.exit(1)
 
 
@@ -180,6 +209,10 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
 
     # session selects which config block applies, so it comes only from the CLI.
     session = cli.get("session", builtin["session"])
+    error = session_name_error(session)
+    if error:
+        print(f"Error: invalid --session {session!r}: {error}", file=sys.stderr)
+        sys.exit(1)
     flags = {**builtin, **load_defaults(session), **cli}
 
     action = rest[0]
