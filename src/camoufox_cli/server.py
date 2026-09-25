@@ -14,6 +14,11 @@ from .browser import BrowserManager
 from .commands import execute
 from .protocol import parse_command, serialize_response
 
+# Max seconds a client connection may take to send its command (and to take
+# the response). This daemon serves one connection at a time, so a client
+# that connects but never sends would otherwise block every other tab.
+CONNECTION_TIMEOUT = 10.0
+
 
 class DaemonServer:
     def __init__(self, session: str = "default", headless: bool = True, timeout: int = 1800, persistent: str | None = None, proxy: str | None = None, geoip: bool = True, locale: str | None = None):
@@ -74,6 +79,7 @@ class DaemonServer:
             self._shutdown()
 
     def _handle_connection(self, conn: socket.socket) -> None:
+        conn.settimeout(CONNECTION_TIMEOUT)
         data = b""
         while True:
             chunk = conn.recv(4096)

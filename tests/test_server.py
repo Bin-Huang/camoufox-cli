@@ -1,12 +1,18 @@
 """Tests for daemon pid-file claiming (startup race hardening)."""
 
+import json
 import os
+import signal
+import socket
 import subprocess
 import sys
+import threading
 import time
+from unittest.mock import patch
 
 import pytest
 
+from camoufox_cli import server as server_module
 from camoufox_cli.server import DaemonServer
 
 
@@ -99,3 +105,38 @@ class TestClaimPid:
             f.write("")
         server._cleanup_files()
         assert os.path.exists(server.socket_path)
+
+
+class TestConnectionTimeout:
+    def test_idle_client_does_not_block_other_commands(self, server, monkeypatch):
+        """A client that connects but never sends must not block the daemon."""
+        monkeypatch.setattr(server_module, "CONNECTION_TIMEOUT", 0.5)
+
+        def run():
+            with patch.object(signal, "signal"):  # main-thread only
+                server.start()
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        deadline = time.time() + 5
+        while not os.path.exists(server.socket_path) and time.time() < deadline:
+            time.sleep(0.05)
+
+        def send(command: dict) -> dict:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                s.settimeout(5)
+                s.connect(server.socket_path)
+                s.sendall(json.dumps(command).encode() + b"\n")
+                return json.loads(s.makefile().readline())
+
+        idle = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        idle.connect(server.socket_path)
+        try:
+            # No browser is launched, so "title" answers with an error at once
+            # (once the daemon drops the idle connection).
+            resp = send({"id": "r1", "action": "title", "params": {}})
+            assert resp["id"] == "r1"
+        finally:
+            idle.close()
+            send({"id": "r2", "action": "close", "params": {}})
+            thread.join(timeout=5)
