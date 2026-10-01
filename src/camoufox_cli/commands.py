@@ -9,6 +9,7 @@ import math
 
 from .browser import BrowserManager, TabView
 from .protocol import ok_response, error_response
+from .refs import UNNAMED_RE
 
 
 def execute(manager: BrowserManager, command: dict) -> dict:
@@ -43,11 +44,13 @@ def _resolve_ref(manager: TabView, ref_str: str):
         raise ValueError(f"Ref @{ref_str.lstrip('@')} not found. Run 'camoufox-cli snapshot' to refresh refs.")
     page = manager.get_page()
 
-    # Always filter by the exact name, even when it is empty: nth counts only
-    # elements with this exact name, so an unfiltered role query would pick
-    # the wrong element when named and unnamed elements share a role.
+    # Always filter by name, even for an unnamed ref: nth counts only elements
+    # that the snapshot shows with this name, so an unfiltered role query
+    # would pick the wrong element when named and unnamed elements share a role.
+    name = entry.name or UNNAMED_RE
+
     def by_role(root):
-        return root.get_by_role(entry.role, name=entry.name, exact=True)  # type: ignore[arg-type]
+        return root.get_by_role(entry.role, name=name, exact=True)  # type: ignore[arg-type]
 
     locator = by_role(page)
     scope = manager.refs.scope
@@ -162,20 +165,32 @@ def _cmd_snapshot(manager: TabView, cmd_id: str, params: dict) -> dict:
 # DOM-click the element and return the href the caller must navigate to, or
 # null. For links, a window-level listener runs after the page's own handlers:
 # if none of them called preventDefault() (onclick, SPA routers), it cancels
-# the native navigation and returns the href. closest() finds the <a> when the
-# locator resolves to a child element.
+# the native navigation and returns the href. If a page handler stops
+# propagation (e.g. React's e.stopPropagation()), that listener never runs and
+# the native navigation is not cancelled, so the href is still returned when
+# the click was not prevented: page.goto() then replaces that navigation.
+# closest() finds the <a> when the locator resolves to a child element.
 _CLICK_JS = """el => {
     const link = el.closest('a');
     if (!(link instanceof HTMLAnchorElement) || !link.href || link.protocol === 'javascript:') {
         el.click();
         return null;
     }
+    let event = null;
     let href = null;
+    const capture = e => { event = e; };
     const probe = e => {
         if (!e.defaultPrevented) { e.preventDefault(); href = link.href; }
     };
+    window.addEventListener('click', capture, true);
     window.addEventListener('click', probe);
-    try { el.click(); } finally { window.removeEventListener('click', probe); }
+    try {
+        el.click();
+    } finally {
+        window.removeEventListener('click', capture, true);
+        window.removeEventListener('click', probe);
+    }
+    if (href === null && event && !event.defaultPrevented) href = link.href;
     return href;
 }"""
 

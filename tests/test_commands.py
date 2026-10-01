@@ -8,7 +8,7 @@ import pytest
 
 from camoufox_cli.commands import _resolve_ref, execute
 from camoufox_cli.browser import BrowserManager
-from camoufox_cli.refs import RefRegistry
+from camoufox_cli.refs import RefRegistry, UNNAMED_RE
 
 FIXTURE_URL = "file://" + os.path.join(os.path.dirname(__file__), "fixture.html")
 
@@ -125,7 +125,7 @@ class TestResolveRef:
         _resolve_ref(view, "@e2")
 
         # nth counts only unnamed textboxes, so the query must be limited to them
-        page.get_by_role.assert_called_once_with("textbox", name="", exact=True)
+        page.get_by_role.assert_called_once_with("textbox", name=UNNAMED_RE, exact=True)
         page.get_by_role.return_value.nth.assert_called_once_with(0)
 
 

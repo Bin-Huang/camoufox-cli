@@ -1,6 +1,6 @@
 """Tests for ref registry: parsing aria snapshots and resolving refs."""
 
-from camoufox_cli.refs import RefRegistry, RefEntry, INTERACTIVE_ROLES
+from camoufox_cli.refs import RefRegistry, RefEntry, INTERACTIVE_ROLES, UNNAMED_RE
 
 
 class TestBuildFromSnapshot:
@@ -49,6 +49,22 @@ class TestBuildFromSnapshot:
         assert registry.resolve("e1").name == "Step 1: Sign in"
         assert registry.resolve("e2").role == "link"
         assert registry.resolve("e2").name == "It's #42"
+
+    def test_unquoted_slash_name(self):
+        # Playwright writes a name that starts and ends with "/" without quotes
+        registry = RefRegistry()
+        aria = ("- link /about/:\n  - /url: /about/\n- button /a/b/ [disabled]\n"
+                "- 'button /a: b/'\n- link /x/: /x/ text")
+        result = registry.build_from_snapshot(aria, interactive_only=True)
+        assert [registry.resolve(f"e{i}").name for i in range(1, 5)] == ["/about/", "/a/b/", "/a: b/", "/x/"]
+        assert "- button /a/b/ [disabled] [ref=e2]" in result
+
+    def test_unnamed_re_matches_empty_and_omitted_names(self):
+        # Playwright omits names longer than 900 characters
+        assert UNNAMED_RE.search("")
+        assert UNNAMED_RE.search("x" * 901)
+        assert not UNNAMED_RE.search("x" * 900)
+        assert not UNNAMED_RE.search("Submit")
 
     def test_nested_indentation(self):
         registry = RefRegistry()

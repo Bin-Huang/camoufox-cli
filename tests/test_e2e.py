@@ -178,7 +178,23 @@ class TestE2E:
 
         resp = cmd(daemon, "click", {"ref": ref}, tab="link-nav")
         assert resp["success"] is True
-        assert "fixture.html" in cmd(daemon, "url", tab="link-nav")["data"]["url"]
+        # The data: URL itself contains "fixture.html", so check the scheme.
+        assert cmd(daemon, "url", tab="link-nav")["data"]["url"].startswith("file://")
+
+    def test_click_link_whose_handler_stops_propagation_navigates(self, daemon):
+        # The handler stops propagation (as React's e.stopPropagation() does)
+        # without preventing the default, so the link must still navigate.
+        html = (f"<a href='{FIXTURE_URL}' target='_blank'"
+                " onclick='event.stopPropagation()'>Next</a>")
+        cmd(daemon, "open", {"url": "data:text/html," + quote(html)}, tab="link-stop")
+        resp = cmd(daemon, "snapshot", tab="link-stop")
+        ref = find_ref(resp["data"]["snapshot"], "link")
+
+        resp = cmd(daemon, "click", {"ref": ref}, tab="link-stop")
+        assert resp["success"] is True
+        # The data: URL itself contains "fixture.html", so check the scheme.
+        assert cmd(daemon, "url", tab="link-stop")["data"]["url"].startswith("file://")
+        cmd(daemon, "close", tab="link-stop")
 
     def test_mouse_click_at_button_center(self, daemon):
         cmd(daemon, "eval", {"expression": "document.getElementById('output').textContent = ''"})
@@ -195,22 +211,24 @@ class TestE2E:
         assert resp["data"]["result"] == "clicked"
 
     def test_click_buttons_with_special_characters_in_name(self, daemon):
-        # Names with quotes, ": " or backslashes are escaped in the aria snapshot
+        # Names with quotes, ": " or backslashes are escaped in the aria snapshot,
+        # a "/.../" name is not quoted, and a name over 900 chars is omitted
         html = ("<button id=quote>Say &quot;hi&quot;</button><button id=colon>Step 1: Sign in</button>"
-                "<button id=slash>a\\b</button><p id=out></p>"
+                "<button id=slash>a\\b</button><button id=regex>/a/b/</button>"
+                f"<button id=long>{'x' * 950}</button><button id=empty></button><p id=out></p>"
                 "<script>for (const b of document.querySelectorAll('button'))"
                 " b.onclick = () => { out.textContent += b.id + ','; };</script>")
         cmd(daemon, "open", {"url": "data:text/html," + quote(html)}, tab="names")
         snap = cmd(daemon, "snapshot", {"interactive": True}, tab="names")["data"]["snapshot"]
         refs = [l[l.index("[ref=") + 5:l.index("]", l.index("[ref="))] for l in snap.split("\n")]
-        assert len(refs) == 3
+        assert len(refs) == 6
 
         for ref in refs:
             resp = cmd(daemon, "click", {"ref": "@" + ref}, tab="names")
             assert resp["success"] is True, resp
 
         resp = cmd(daemon, "eval", {"expression": "document.getElementById('out').textContent"}, tab="names")
-        assert resp["data"]["result"] == "quote,colon,slash,"
+        assert resp["data"]["result"] == "quote,colon,slash,regex,long,empty,"
         cmd(daemon, "close", tab="names")
 
     def test_select_dropdown(self, daemon):

@@ -14,11 +14,17 @@ const INTERACTIVE_ROLES = new Set([
   "select", "listbox", "searchbox",
 ]);
 
-// Playwright renders each node as `- role "name"`, with the name JSON-encoded.
-// If the key contains YAML-special text (e.g. ": " or " #"), the whole key is
-// wrapped in YAML single quotes, with ' escaped as ''.
-const ARIA_ITEM_RE = /^\s*-\s+(?:'((?:[^']|'')*)'|(.*))/;
-const ARIA_KEY_RE = /^(\w+)(?:\s+("(?:[^"\\]|\\.)*"))?/;
+// Playwright renders each node as `- role "name" [attrs]`, with the name
+// JSON-encoded, except that a name which starts and ends with "/" is written
+// as is. If the key contains YAML-special text (e.g. ": " or " #"), the whole
+// key is wrapped in YAML single quotes, with ' escaped as ''. A plain key never
+// contains ":" followed by whitespace, so that marks where its value starts.
+const ARIA_ITEM_RE = /^\s*-\s+(?:'((?:[^']|'')*)'|((?:[^:]|:(?!\s|$))*))/;
+const ARIA_KEY_RE = /^(\w+)(?:\s+("(?:[^"\\]|\\.)*"|\/.*\/(?=(?:\s\[[^\]]*\])*$)))?/;
+
+// Playwright omits names longer than 900 characters, so an unnamed node is an
+// element whose accessible name is empty or over that limit.
+export const UNNAMED_RE = /^$|^[\s\S]{901,}$/;
 
 function parseAriaLine(line: string): { role: string; name: string } | null {
   const item = line.match(ARIA_ITEM_RE);
@@ -26,7 +32,8 @@ function parseAriaLine(line: string): { role: string; name: string } | null {
   const key = item[1] !== undefined ? item[1].replace(/''/g, "'") : item[2];
   const m = key.match(ARIA_KEY_RE);
   if (!m) return null;
-  return { role: m[1], name: m[2] ? JSON.parse(m[2]) : "" };
+  const name = m[2] ?? "";
+  return { role: m[1], name: name.startsWith('"') ? JSON.parse(name) : name };
 }
 
 export class RefRegistry {

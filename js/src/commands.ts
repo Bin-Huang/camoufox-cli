@@ -3,6 +3,7 @@
 import type { Locator, Page } from "playwright-core";
 import { BrowserManager, TabView } from "./browser.js";
 import { okResponse, errorResponse, type Response } from "./protocol.js";
+import { UNNAMED_RE } from "./refs.js";
 
 type Handler = (manager: TabView, cmdId: string, params: Record<string, unknown>) => Promise<Response>;
 
@@ -12,7 +13,10 @@ async function resolveRef(manager: TabView, refStr: string): Promise<Locator> {
     throw new Error(`Ref @${refStr.replace(/^@/, "")} not found. Run 'camoufox-cli snapshot' to refresh refs.`);
   }
   const page = (await manager.getPage());
-  const byRole = (root: Page | Locator) => root.getByRole(entry.role as any, { name: entry.name, exact: true });
+  // Always filter by name, even for an unnamed ref: nth counts only elements
+  // that the snapshot shows with this name.
+  const name = entry.name || UNNAMED_RE;
+  const byRole = (root: Page | Locator) => root.getByRole(entry.role as any, { name, exact: true });
   let locator = byRole(page);
   const scope = manager.refs.scope;
   if (scope) {

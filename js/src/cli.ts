@@ -290,8 +290,10 @@ export function buildCommand(action: string, rest: string[]): Record<string, unk
         process.stderr.write(usage + "\n");
         process.exit(1);
       }
-      const x = Number(require_(rest, 2, usage));
-      const y = Number(require_(rest, 3, usage));
+      // Number("") is 0, so reject blank values explicitly.
+      const coord = (s: string) => (s.trim() === "" ? NaN : Number(s));
+      const x = coord(require_(rest, 2, usage));
+      const y = coord(require_(rest, 3, usage));
       if (!Number.isFinite(x) || !Number.isFinite(y)) {
         process.stderr.write(usage + "\n");
         process.exit(1);

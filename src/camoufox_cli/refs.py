@@ -23,17 +23,24 @@ INTERACTIVE_ROLES = frozenset({
     "select", "listbox", "searchbox",
 })
 
-# Playwright renders each node as `- role "name"`, with the name JSON-encoded.
-# If the key contains YAML-special text (e.g. ": " or " #"), the whole key is
-# wrapped in YAML single quotes, with ' escaped as ''.
+# Playwright renders each node as `- role "name" [attrs]`, with the name
+# JSON-encoded, except that a name which starts and ends with "/" is written
+# as is. If the key contains YAML-special text (e.g. ": " or " #"), the whole
+# key is wrapped in YAML single quotes, with ' escaped as ''. A plain key never
+# contains ":" followed by whitespace, so that marks where its value starts.
 _ARIA_ITEM_RE = re.compile(
-    r"^\s*-\s+"                     # leading indent + dash
-    r"(?:'((?:[^']|'')*)'|(.*))"     # single-quoted key, or plain key
+    r"^\s*-\s+"                                # leading indent + dash
+    r"(?:'((?:[^']|'')*)'|((?:[^:]|:(?!\s|$))*))"  # single-quoted key, or plain key
 )
 _ARIA_KEY_RE = re.compile(
-    r'^(\w+)'                        # role
-    r'(?:\s+("(?:[^"\\]|\\.)*"))?'   # optional JSON-encoded name
+    r'^(\w+)'                                  # role
+    r'(?:\s+("(?:[^"\\]|\\.)*"'                # optional JSON-encoded name,
+    r'|/.*/(?=(?:\s\[[^\]]*\])*$)))?'          # or a "/.../" name before the attrs
 )
+
+# Playwright omits names longer than 900 characters, so an unnamed node is an
+# element whose accessible name is empty or over that limit.
+UNNAMED_RE = re.compile(r"^$|^[\s\S]{901,}$")
 
 
 def _parse_aria_line(line: str) -> tuple[str, str] | None:
@@ -45,7 +52,8 @@ def _parse_aria_line(line: str) -> tuple[str, str] | None:
     m = _ARIA_KEY_RE.match(key)
     if not m:
         return None
-    return m.group(1), json.loads(m.group(2)) if m.group(2) else ""
+    name = m.group(2) or ""
+    return m.group(1), json.loads(name) if name.startswith('"') else name
 
 
 class RefRegistry:

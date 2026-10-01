@@ -157,15 +157,17 @@ describe("e2e", { timeout: 120_000 }, () => {
   });
 
   it("click buttons with special characters in name", async () => {
-    // Names with quotes, ": " or backslashes are escaped in the aria snapshot
+    // Names with quotes, ": " or backslashes are escaped in the aria snapshot,
+    // a "/.../" name is not quoted, and a name over 900 chars is omitted
     const html = "<button id=quote>Say &quot;hi&quot;</button><button id=colon>Step 1: Sign in</button>"
-      + "<button id=slash>a\\b</button><p id=out></p>"
+      + "<button id=slash>a\\b</button><button id=regex>/a/b/</button>"
+      + `<button id=long>${"x".repeat(950)}</button><button id=empty></button><p id=out></p>`
       + "<script>for (const b of document.querySelectorAll('button'))"
       + " b.onclick = () => { out.textContent += b.id + ','; };</script>";
     await cmd(SOCK_PATH, "open", { url: "data:text/html," + encodeURIComponent(html) }, "r1", "names");
     const snap = await cmd(SOCK_PATH, "snapshot", { interactive: true }, "r1", "names");
     const refs = snap.data.snapshot.split("\n").map((l: string) => l.slice(l.indexOf("[ref=") + 5, l.indexOf("]", l.indexOf("[ref="))));
-    expect(refs).toHaveLength(3);
+    expect(refs).toHaveLength(6);
 
     for (const ref of refs) {
       const resp = await cmd(SOCK_PATH, "click", { ref: "@" + ref }, "r1", "names");
@@ -173,7 +175,7 @@ describe("e2e", { timeout: 120_000 }, () => {
     }
 
     const evalResp = await cmd(SOCK_PATH, "eval", { expression: "document.getElementById('out').textContent" }, "r1", "names");
-    expect(evalResp.data.result).toBe("quote,colon,slash,");
+    expect(evalResp.data.result).toBe("quote,colon,slash,regex,long,empty,");
     await cmd(SOCK_PATH, "close", {}, "r1", "names");
   });
 

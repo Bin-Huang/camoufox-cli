@@ -255,6 +255,10 @@ describe("buildCommand", () => {
     expect(() => buildCommand("mouse", ["mouse", "click", "10", "abc"])).toThrow("process.exit");
   });
 
+  it("mouse click empty coordinate exits", () => {
+    expect(() => buildCommand("mouse", ["mouse", "click", "", "20"])).toThrow("process.exit");
+  });
+
   it("mouse unknown subcommand exits", () => {
     expect(() => buildCommand("mouse", ["mouse", "move", "10", "20"])).toThrow("process.exit");
   });

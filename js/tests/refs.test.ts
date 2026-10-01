@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { RefRegistry } from "../src/refs.js";
+import { RefRegistry, UNNAMED_RE } from "../src/refs.js";
 
 describe("RefRegistry.buildFromSnapshot", () => {
   it("assigns refs to basic snapshot", () => {
@@ -50,6 +50,24 @@ describe("RefRegistry.buildFromSnapshot", () => {
     expect(registry.resolve("e1")!.name).toBe("Step 1: Sign in");
     expect(registry.resolve("e2")!.role).toBe("link");
     expect(registry.resolve("e2")!.name).toBe("It's #42");
+  });
+
+  it("parses unquoted slash names", () => {
+    // Playwright writes a name that starts and ends with "/" without quotes
+    const registry = new RefRegistry();
+    const aria = "- link /about/:\n  - /url: /about/\n- button /a/b/ [disabled]\n"
+      + "- 'button /a: b/'\n- link /x/: /x/ text";
+    const result = registry.buildFromSnapshot(aria, true);
+    expect([1, 2, 3, 4].map((i) => registry.resolve(`e${i}`)!.name)).toEqual(["/about/", "/a/b/", "/a: b/", "/x/"]);
+    expect(result).toContain("- button /a/b/ [disabled] [ref=e2]");
+  });
+
+  it("UNNAMED_RE matches empty and omitted names", () => {
+    // Playwright omits names longer than 900 characters
+    expect(UNNAMED_RE.test("")).toBe(true);
+    expect(UNNAMED_RE.test("x".repeat(901))).toBe(true);
+    expect(UNNAMED_RE.test("x".repeat(900))).toBe(false);
+    expect(UNNAMED_RE.test("Submit")).toBe(false);
   });
 
   it("handles nested indentation", () => {
