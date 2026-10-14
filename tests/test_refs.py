@@ -59,6 +59,19 @@ class TestBuildFromSnapshot:
         assert [registry.resolve(f"e{i}").name for i in range(1, 5)] == ["/about/", "/a/b/", "/a: b/", "/x/"]
         assert "- button /a/b/ [disabled] [ref=e2]" in result
 
+    def test_single_slash_name(self):
+        # A name of exactly "/" also starts and ends with "/", so Playwright
+        # writes it unquoted. It must not merge with an unnamed sibling.
+        registry = RefRegistry()
+        aria = "- link /:\n  - /url: \"#a\"\n- link:\n  - /url: \"#b\"\n- button /abc/ [disabled]"
+        result = registry.build_from_snapshot(aria, interactive_only=True)
+        e1, e2, e3 = (registry.resolve(f"e{i}") for i in range(1, 4))
+        assert (e1.role, e1.name, e1.nth) == ("link", "/", 0)
+        assert (e2.role, e2.name, e2.nth) == ("link", "", 0)
+        assert (e3.role, e3.name, e3.nth) == ("button", "/abc/", 0)
+        assert "- link /: [ref=e1]" in result
+        assert "- button /abc/ [disabled] [ref=e3]" in result
+
     def test_unnamed_re_matches_empty_and_omitted_names(self):
         # Playwright omits names longer than 900 characters
         assert UNNAMED_RE.search("")

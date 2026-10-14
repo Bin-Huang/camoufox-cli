@@ -24,10 +24,11 @@ INTERACTIVE_ROLES = frozenset({
 })
 
 # Playwright renders each node as `- role "name" [attrs]`, with the name
-# JSON-encoded, except that a name which starts and ends with "/" is written
-# as is. If the key contains YAML-special text (e.g. ": " or " #"), the whole
-# key is wrapped in YAML single quotes, with ' escaped as ''. A plain key never
-# contains ":" followed by whitespace, so that marks where its value starts.
+# JSON-encoded, except that a name which starts and ends with "/" (including
+# "/" itself) is written as is. If the key contains YAML-special text (e.g.
+# ": " or " #"), the whole key is wrapped in YAML single quotes, with ' escaped
+# as ''. A plain key never contains ":" followed by whitespace, so that marks
+# where its value starts.
 _ARIA_ITEM_RE = re.compile(
     r"^\s*-\s+"                                # leading indent + dash
     r"(?:'((?:[^']|'')*)'|((?:[^:]|:(?!\s|$))*))"  # single-quoted key, or plain key
@@ -35,7 +36,7 @@ _ARIA_ITEM_RE = re.compile(
 _ARIA_KEY_RE = re.compile(
     r'^(\w+)'                                  # role
     r'(?:\s+("(?:[^"\\]|\\.)*"'                # optional JSON-encoded name,
-    r'|/.*/(?=(?:\s\[[^\]]*\])*$)))?'          # or a "/.../" name before the attrs
+    r'|/(?:.*/)?(?=(?:\s\[[^\]]*\])*$)))?'     # or a "/.../" or "/" name before the attrs
 )
 
 # Playwright omits names longer than 900 characters, so an unnamed node is an

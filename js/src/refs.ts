@@ -15,12 +15,13 @@ const INTERACTIVE_ROLES = new Set([
 ]);
 
 // Playwright renders each node as `- role "name" [attrs]`, with the name
-// JSON-encoded, except that a name which starts and ends with "/" is written
-// as is. If the key contains YAML-special text (e.g. ": " or " #"), the whole
-// key is wrapped in YAML single quotes, with ' escaped as ''. A plain key never
-// contains ":" followed by whitespace, so that marks where its value starts.
+// JSON-encoded, except that a name which starts and ends with "/" (including
+// "/" itself) is written as is. If the key contains YAML-special text (e.g.
+// ": " or " #"), the whole key is wrapped in YAML single quotes, with ' escaped
+// as ''. A plain key never contains ":" followed by whitespace, so that marks
+// where its value starts.
 const ARIA_ITEM_RE = /^\s*-\s+(?:'((?:[^']|'')*)'|((?:[^:]|:(?!\s|$))*))/;
-const ARIA_KEY_RE = /^(\w+)(?:\s+("(?:[^"\\]|\\.)*"|\/.*\/(?=(?:\s\[[^\]]*\])*$)))?/;
+const ARIA_KEY_RE = /^(\w+)(?:\s+("(?:[^"\\]|\\.)*"|\/(?:.*\/)?(?=(?:\s\[[^\]]*\])*$)))?/;
 
 // Playwright omits names longer than 900 characters, so an unnamed node is an
 // element whose accessible name is empty or over that limit.
