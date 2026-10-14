@@ -62,6 +62,19 @@ describe("RefRegistry.buildFromSnapshot", () => {
     expect(result).toContain("- button /a/b/ [disabled] [ref=e2]");
   });
 
+  it("parses a single slash name apart from an unnamed sibling", () => {
+    // A name of exactly "/" also starts and ends with "/", so Playwright
+    // writes it unquoted. It must not merge with an unnamed sibling.
+    const registry = new RefRegistry();
+    const aria = '- link /:\n  - /url: "#a"\n- link:\n  - /url: "#b"\n- button /abc/ [disabled]';
+    const result = registry.buildFromSnapshot(aria, true);
+    expect(registry.resolve("e1")).toEqual({ ref: "e1", role: "link", name: "/", nth: 0 });
+    expect(registry.resolve("e2")).toEqual({ ref: "e2", role: "link", name: "", nth: 0 });
+    expect(registry.resolve("e3")).toEqual({ ref: "e3", role: "button", name: "/abc/", nth: 0 });
+    expect(result).toContain("- link /: [ref=e1]");
+    expect(result).toContain("- button /abc/ [disabled] [ref=e3]");
+  });
+
   it("UNNAMED_RE matches empty and omitted names", () => {
     // Playwright omits names longer than 900 characters
     expect(UNNAMED_RE.test("")).toBe(true);
