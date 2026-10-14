@@ -37,6 +37,18 @@ camoufox-cli = "camoufox_cli.cli:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.sdist]
+# List the sdist contents explicitly. By default hatchling packs every file
+# that the repo .gitignore does not exclude, which picks up local untracked
+# files and the JS package. A leading "/" anchors each pattern to the repo
+# root, so js/LICENSE does not match.
+include = [
+    "/src/camoufox_cli",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/camoufox_cli"]
 
