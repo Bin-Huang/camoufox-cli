@@ -197,6 +197,11 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
         break;
       case "--timeout":
         cli.timeout = parseIntArg(argv[++i] ?? (process.stderr.write("Error: --timeout requires a value\n"), process.exit(1), ""), "--timeout");
+        // The idle watchdog would stop the daemon within seconds.
+        if (cli.timeout <= 0) {
+          process.stderr.write(`Error: --timeout must be greater than 0, got ${JSON.stringify(argv[i])}\n`);
+          process.exit(1);
+        }
         break;
       case "--json":
         cli.json = true;

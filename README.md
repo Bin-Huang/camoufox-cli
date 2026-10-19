@@ -64,9 +64,13 @@ that tells you to run `camoufox-cli install`.
     [P3TERX/GeoLite.mmdb](https://github.com/P3TERX/GeoLite.mmdb/releases).
   - The uBlock Origin addon, from addons.mozilla.org.
 - **Cache location:** the browser goes into the Camoufox cache directory.
-  The npm and pip packages use the same directory:
+  By default, the npm and pip packages use the same directory:
   - macOS: `~/Library/Caches/camoufox`
   - Linux: `~/.cache/camoufox`
+
+  Two environment variables change this. The pip package uses
+  `$XDG_CACHE_HOME/camoufox` when `XDG_CACHE_HOME` is set. The npm package
+  uses `$CAMOUFOX_INSTALL_DIR` when it is set.
 - **Other files:** `~/.camoufox-cli/` holds the config file and
   `--persistent` profiles. While a session runs, its daemon keeps
   `/tmp/camoufox-cli-<session>.*` socket and pid files.

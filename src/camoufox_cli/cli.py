@@ -185,6 +185,10 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
                 print("Error: --timeout requires a value", file=sys.stderr)
                 sys.exit(1)
             cli["timeout"] = parse_int(args[i], "--timeout")
+            # The idle watchdog would stop the daemon within seconds.
+            if cli["timeout"] <= 0:
+                print(f"Error: --timeout must be greater than 0, got {args[i]!r}", file=sys.stderr)
+                sys.exit(1)
         elif args[i] == "--json":
             cli["json"] = True
         elif args[i] == "--persistent":
