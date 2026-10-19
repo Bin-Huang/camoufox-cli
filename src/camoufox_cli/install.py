@@ -173,7 +173,7 @@ def install_browser() -> None:
             self.missing_asset_error()
 
     fetcher = ResilientFetcher()
-    # Match the JS installer: skip the ~600MB download when version.json
+    # Match the JS installer: skip the ~1.3 GB download when version.json
     # already matches AND the binary is actually present. Without the
     # presence check a broken install (version file, no binary) would be
     # masked forever; without the version check every `install` re-downloads.

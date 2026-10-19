@@ -16,11 +16,16 @@ OpenClaw, Claude Code, Cursor, Codex, and any agent that can run shell commands.
 
 ## Install
 
+camoufox-cli supports macOS and Linux only. On Windows, run it inside
+[WSL](https://learn.microsoft.com/windows/wsl/install). Native Windows is not
+supported: the CLI exits with an error.
+
 Tell your AI agent (e.g. OpenClaw):
 
 > Install this CLI and skills from https://github.com/Bin-Huang/camoufox-cli
 
-Or install manually:
+Or install manually. Pick **one** of npm or pip. Both install a command named
+`camoufox-cli`, so installing both makes one shadow the other.
 
 ```bash
 npm install -g camoufox-cli      # Requires Node.js 20.10+
@@ -30,7 +35,7 @@ camoufox-cli install              # Download browser
 Or with pip:
 
 ```bash
-pipx install camoufox-cli
+pipx install camoufox-cli        # Requires Python 3.10+
 camoufox-cli install              # Download browser
 ```
 
@@ -40,9 +45,49 @@ On Linux, install system dependencies with:
 camoufox-cli install --with-deps
 ```
 
-The browser is downloaded from GitHub releases. If the anonymous GitHub API
-rate limit is exhausted (common on shared server/CI IPs), the installer
-automatically falls back to scraping github.com release pages.
+`camoufox-cli install` is a required step. Commands such as `open` do not
+download the browser. Without it, they fail with a `Browser not found` error
+that tells you to run `camoufox-cli install`.
+
+### Requirements
+
+- **Platform:** macOS or Linux. Windows only through WSL.
+- **Runtime:** Node.js 20.10+ (npm package) or Python 3.10+ (pip package).
+- **Disk and download:** the browser download is about 1.3 GB, and it takes
+  about 2.5 GB after extraction. The download takes several minutes.
+- **Download sources:** `camoufox-cli install` downloads these files:
+  - The Camoufox browser, from the GitHub releases of
+    [daijro/camoufox](https://github.com/daijro/camoufox/releases).
+    If the anonymous GitHub API rate limit is exhausted (common on shared
+    server/CI IPs), the installer falls back to the github.com release pages.
+  - The GeoIP database, from the GitHub releases of
+    [P3TERX/GeoLite.mmdb](https://github.com/P3TERX/GeoLite.mmdb/releases).
+  - The uBlock Origin addon, from addons.mozilla.org.
+- **Cache location:** the browser goes into the Camoufox cache directory.
+  By default, the npm and pip packages use the same directory:
+  - macOS: `~/Library/Caches/camoufox`
+  - Linux: `~/.cache/camoufox`
+
+  Two environment variables change this. The pip package uses
+  `$XDG_CACHE_HOME/camoufox` when `XDG_CACHE_HOME` is set. The npm package
+  uses `$CAMOUFOX_INSTALL_DIR` when it is set.
+- **Other files:** `~/.camoufox-cli/` holds the config file and
+  `--persistent` profiles. Each session's daemon creates
+  `/tmp/camoufox-cli-<session>.*` files (socket, pid and, for pip, a lock
+  file that stays after the daemon exits).
+
+### Uninstall
+
+```bash
+camoufox-cli close --all            # Stop running daemons
+npm uninstall -g camoufox-cli       # Or: pipx uninstall camoufox-cli
+rm -rf ~/Library/Caches/camoufox    # macOS browser cache (Linux: ~/.cache/camoufox)
+rm -f /tmp/camoufox-cli-*            # Leftover socket, pid and lock files
+rm -rf ~/.camoufox-cli              # Optional: config and persistent profiles
+```
+
+Other Camoufox-based tools on the same machine use the same browser cache.
+Delete it only if no other tool needs it.
 
 ### Agent Skill
 
@@ -181,6 +226,7 @@ camoufox-cli cookies export file.json     # Export cookies
 --no-geoip             Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 --locale <tag>         Force browser locale (e.g. "en-US" or "en-US,zh-CN")
 --version              Print version and exit
+--help, -h             Print usage and exit
 ```
 
 ## Config File
@@ -196,7 +242,7 @@ Tired of repeating the same flags on every call? Put defaults in `~/.camoufox-cl
   },
   "sessions": {
     "<your-session-name>": {
-      "proxy": "socks5://127.0.0.1:1080",
+      "proxy": "http://127.0.0.1:8080",
       "locale": "zh-CN"
     }
   }
@@ -250,10 +296,10 @@ camoufox-cli --session b --persistent ~/.camoufox-cli/profiles/bob   open https:
 ## Architecture
 
 ```
-CLI (camoufox-cli)  ──Unix socket──▶  Daemon (Python)  ──Playwright──▶  Camoufox (Firefox)
+CLI (camoufox-cli)  ──Unix socket──▶  Daemon  ──Playwright──▶  Camoufox (Firefox)
 ```
 
-The CLI sends JSON commands to a long-running daemon process via Unix socket. The daemon manages the Camoufox browser instance and maintains the ref registry between commands. The daemon auto-starts on the first command and auto-stops after 30 minutes of inactivity.
+The daemon runs on Node.js for the npm package and on Python for the pip package. The CLI sends JSON commands to a long-running daemon process via Unix socket. The daemon manages the Camoufox browser instance and maintains the ref registry between commands. The daemon auto-starts on the first command and auto-stops after 30 minutes of inactivity.
 
 ## Related
 

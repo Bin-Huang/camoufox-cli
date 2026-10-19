@@ -12,7 +12,9 @@ function getArg(name: string, defaultValue: string): string {
 
 const session = getArg("--session", "default");
 const headless = !args.includes("--headed");
-const timeout = parseInt(getArg("--timeout", "1800"), 10);
+// Number, not parseInt: the CLI passes String(timeout), which is "1e+21" for a
+// huge value, and parseInt("1e+21") is 1.
+const timeout = Number(getArg("--timeout", "1800"));
 const persistent = args.includes("--persistent") ? getArg("--persistent", "") || null : null;
 const proxy = args.includes("--proxy") ? getArg("--proxy", "") || null : null;
 const geoip = !args.includes("--no-geoip");

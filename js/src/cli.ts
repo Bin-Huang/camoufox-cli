@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { loadDefaults } from "./config.js";
 
 const SOCKET_PREFIX = "/tmp/camoufox-cli-";
+// Commands whose arguments are free text: there "-h" is data, not a help flag.
+const FREE_TEXT_ACTIONS = new Set(["fill", "type", "select", "press", "eval", "text", "wait"]);
 // A unix socket path must fit in sun_path: 104 bytes on macOS (108 on Linux),
 // including the terminating NUL.
 const MAX_SOCKET_PATH_BYTES = 103;
@@ -33,6 +35,15 @@ export function sessionNameError(session: string): string | null {
     return `must be at most ${maxBytes} bytes (unix socket path limit)`;
   }
   return null;
+}
+
+/** Parse an integer argument, or exit with a one-line error. */
+export function parseIntArg(value: string, name: string): number {
+  if (!/^-?[0-9]+$/.test(value)) {
+    process.stderr.write(`Error: ${name} must be an integer, got ${JSON.stringify(value)}\n`);
+    process.exit(1);
+  }
+  return parseInt(value, 10);
 }
 
 function sendCommand(sockPath: string, command: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -187,7 +198,12 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
         cli.headed = true;
         break;
       case "--timeout":
-        cli.timeout = parseInt(argv[++i] ?? "1800", 10);
+        cli.timeout = parseIntArg(argv[++i] ?? (process.stderr.write("Error: --timeout requires a value\n"), process.exit(1), ""), "--timeout");
+        // The idle watchdog would stop the daemon within seconds.
+        if (cli.timeout <= 0) {
+          process.stderr.write(`Error: --timeout must be greater than 0, got ${JSON.stringify(argv[i])}\n`);
+          process.exit(1);
+        }
         break;
       case "--json":
         cli.json = true;
@@ -220,6 +236,15 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
   if (rest.length === 0) {
     process.stderr.write(USAGE + "\n");
     process.exit(1);
+  }
+
+  // "install --help" must print help, not start a 1.3 GB download.
+  if (
+    rest[0] === "help" || rest[0] === "--help" || rest[0] === "-h" ||
+    (!FREE_TEXT_ACTIONS.has(rest[0]) && (rest.includes("--help") || rest.includes("-h")))
+  ) {
+    process.stdout.write(USAGE + "\n");
+    process.exit(0);
   }
 
   // session selects which config block applies, so it comes only from the CLI.
@@ -319,19 +344,19 @@ export function buildCommand(action: string, rest: string[]): Record<string, unk
       return { id: "r1", action: "pdf", params: { path: require_(rest, 1, "Usage: camoufox-cli pdf output.pdf") } };
 
     case "scroll":
-      return { id: "r1", action: "scroll", params: { direction: require_(rest, 1, "Usage: camoufox-cli scroll down [px]"), amount: rest.length > 2 ? parseInt(rest[2], 10) : 500 } };
+      return { id: "r1", action: "scroll", params: { direction: require_(rest, 1, "Usage: camoufox-cli scroll down [px]"), amount: rest.length > 2 ? parseIntArg(rest[2], "scroll amount") : 500 } };
     case "wait": {
       const target = require_(rest, 1, 'Usage: camoufox-cli wait @e1 | camoufox-cli wait 2000 | camoufox-cli wait --url "pattern"');
       if (target === "--url") return { id: "r1", action: "wait", params: { url: require_(rest, 2, 'Usage: camoufox-cli wait --url "*/dashboard"') } };
       if (target.startsWith("@")) return { id: "r1", action: "wait", params: { ref: target } };
-      if (/^\d/.test(target)) return { id: "r1", action: "wait", params: { ms: parseInt(target, 10) } };
+      if (/^\d/.test(target)) return { id: "r1", action: "wait", params: { ms: parseIntArg(target, "wait time") } };
       return { id: "r1", action: "wait", params: { selector: target } };
     }
 
     case "tabs":
       return { id: "r1", action: "tabs", params: {} };
     case "switch":
-      return { id: "r1", action: "switch", params: { index: parseInt(require_(rest, 1, "Usage: camoufox-cli switch <tab-index>"), 10) } };
+      return { id: "r1", action: "switch", params: { index: parseIntArg(require_(rest, 1, "Usage: camoufox-cli switch <tab-index>"), "tab index") } };
     case "sessions":
       return { id: "r1", action: "sessions", params: {} };
     case "install":
@@ -489,6 +514,13 @@ function installSystemDeps(): void {
 // ---------------------------------------------------------------------------
 
 async function main() {
+  // The daemon listens on a unix socket, which this CLI does not support on
+  // native Windows.
+  if (process.platform === "win32") {
+    process.stderr.write("Error: camoufox-cli supports macOS and Linux only. On Windows, run it inside WSL.\n");
+    process.exit(1);
+  }
+
   // Preflight before anything touches camoufox-js: its dependency chain uses
   // JSON import attributes (`with { type: "json" }`), which need Node 20.10+.
   // Without this check, older Nodes die with a bare SyntaxError deep inside
@@ -522,7 +554,16 @@ async function main() {
   if (action === "install") {
     process.stderr.write("[camoufox-cli] Downloading browser...\n");
     const { installBrowser } = await import("./install.js");
-    await installBrowser();
+    try {
+      await installBrowser();
+    } catch (e: any) {
+      // A dropped connection mid-download would otherwise end in a raw undici
+      // error dump that does not say what to do. fetch's own message is only
+      // "fetch failed"; the cause holds the real reason.
+      process.stderr.write(`Error: Browser download failed: ${e?.cause?.message ?? e?.message ?? e}\n`);
+      process.stderr.write("Check your network connection, then run `camoufox-cli install` again.\n");
+      process.exit(1);
+    }
     process.stderr.write("[camoufox-cli] Browser installed.\n");
     if ((command.params as any)?.with_deps) {
       installSystemDeps();
@@ -651,6 +692,7 @@ Flags:
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
   --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")
   --version            Print version and exit
+  --help, -h           Print this help and exit
 
 Config file:
   ~/.camoufox-cli/config.json sets defaults for the flags above (override the

@@ -127,8 +127,9 @@ function coerce(key: string, value: unknown): unknown {
   // null is accepted as "unset" (falls back to the built-in default).
   if (STR_KEYS.has(key)) return value === null || typeof value === "string" ? value : INVALID;
   if (key === "timeout") {
-    // a finite number only — excludes bool, string and null
-    return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : INVALID;
+    // a finite number that stays positive after truncation — excludes bool,
+    // string and null; <= 0 would stop the daemon within seconds
+    return typeof value === "number" && Number.isFinite(value) && Math.trunc(value) > 0 ? Math.trunc(value) : INVALID;
   }
   if (key === "persistent") {
     // true -> "" (default profile path, resolved in main); false -> null
