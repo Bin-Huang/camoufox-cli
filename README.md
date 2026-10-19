@@ -54,7 +54,7 @@ that tells you to run `camoufox-cli install`.
 - **Platform:** macOS or Linux. Windows only through WSL.
 - **Runtime:** Node.js 20.10+ (npm package) or Python 3.10+ (pip package).
 - **Disk and download:** the browser download is about 1.3 GB, and it takes
-  about 2.4 GB after extraction. The download takes several minutes.
+  about 2.5 GB after extraction. The download takes several minutes.
 - **Download sources:** `camoufox-cli install` downloads these files:
   - The Camoufox browser, from the GitHub releases of
     [daijro/camoufox](https://github.com/daijro/camoufox/releases).

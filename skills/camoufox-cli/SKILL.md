@@ -20,7 +20,7 @@ Then download the browser once:
 camoufox-cli install                 # On Linux: camoufox-cli install --with-deps
 ```
 
-- The browser download is about 1.3 GB, and it takes about 2.4 GB after extraction. The download takes several minutes. Run `camoufox-cli install` in the background, or raise the timeout of your shell command (for example to 10 minutes).
+- The browser download is about 1.3 GB, and it takes about 2.5 GB after extraction. The download takes several minutes. Run `camoufox-cli install` in the background, or raise the timeout of your shell command (for example to 10 minutes).
 - Other commands do not download the browser. If a command fails with `Browser not found`, run `camoufox-cli install`.
 - Supported platforms: macOS and Linux. On Windows, run the CLI inside WSL.
 - Download sources: the browser comes from the GitHub releases of `daijro/camoufox`, the GeoIP database from the GitHub releases of `P3TERX/GeoLite.mmdb`, and the uBlock Origin addon from addons.mozilla.org.
