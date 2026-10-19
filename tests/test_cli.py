@@ -280,6 +280,11 @@ class TestParseArgs:
         assert exc.value.code == 1
         assert "--timeout must be an integer" in capsys.readouterr().err
 
+    @pytest.mark.parametrize("args", [["fill", "@e1", "-h"], ["eval", "--help"], ["wait", "--help"]])
+    def test_help_flag_is_data_for_free_text_commands(self, args):
+        flags, cmd = parse_args(args)
+        assert cmd["action"] == args[0]
+
     @pytest.mark.parametrize("value", ["0", "-5"])
     def test_timeout_not_positive_exits(self, value, capsys):
         with pytest.raises(SystemExit) as exc:
@@ -287,7 +292,8 @@ class TestParseArgs:
         assert exc.value.code == 1
         assert "--timeout must be greater than 0" in capsys.readouterr().err
 
-    @pytest.mark.parametrize("args", [["--help"], ["-h"], ["help"], ["--session", "s", "--help"]])
+    @pytest.mark.parametrize("args", [["--help"], ["-h"], ["help"], ["--session", "s", "--help"],
+                                      ["install", "--help"], ["close", "-h"], ["open", "--help"]])
     def test_help_exits_zero(self, args, capsys):
         with pytest.raises(SystemExit) as exc:
             parse_args(args)
