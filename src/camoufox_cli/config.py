@@ -117,8 +117,9 @@ def _coerce(key: str, value: Any) -> tuple[bool, Any]:
         # null is accepted as "unset" (falls back to the built-in default).
         return (value is None or isinstance(value, str), value)
     if key == "timeout":
-        # bool is an int subclass — exclude it; require a finite number.
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        # bool is an int subclass — exclude it; require a finite number that
+        # stays positive after truncation (<= 0 stops the daemon within seconds).
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or int(value) <= 0:
             return (False, None)
         return (True, int(value))
     if key == "persistent":

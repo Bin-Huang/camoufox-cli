@@ -280,6 +280,13 @@ class TestParseArgs:
         assert exc.value.code == 1
         assert "--timeout must be an integer" in capsys.readouterr().err
 
+    @pytest.mark.parametrize("value", ["0", "-5"])
+    def test_timeout_not_positive_exits(self, value, capsys):
+        with pytest.raises(SystemExit) as exc:
+            parse_args(["--timeout", value, "open", "https://example.com"])
+        assert exc.value.code == 1
+        assert "--timeout must be greater than 0" in capsys.readouterr().err
+
     @pytest.mark.parametrize("args", [["--help"], ["-h"], ["help"], ["--session", "s", "--help"]])
     def test_help_exits_zero(self, args, capsys):
         with pytest.raises(SystemExit) as exc:
@@ -427,6 +434,11 @@ class TestConfigFile:
     def test_timeout_bool_dropped(self, config_file):
         # bool is an int subclass in Python — make sure True isn't taken as 1.
         config_file.write_text(json.dumps({"default": {"timeout": True}}))
+        assert "timeout" not in config.load_defaults("default")
+
+    @pytest.mark.parametrize("value", [0, -5, 0.5])
+    def test_timeout_not_positive_dropped(self, config_file, value):
+        config_file.write_text(json.dumps({"default": {"timeout": value}}))
         assert "timeout" not in config.load_defaults("default")
 
     def test_timeout_float_truncated(self, config_file):

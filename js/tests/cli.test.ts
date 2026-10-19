@@ -317,6 +317,10 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["--timeout", value, "open", "https://example.com"])).toThrow("process.exit(1)");
   });
 
+  it.each(["0", "-5"])("--timeout %j (not positive) exits", (value) => {
+    expect(() => parseArgs(["--timeout", value, "open", "https://example.com"])).toThrow("process.exit(1)");
+  });
+
   it("--timeout missing value exits", () => {
     expect(() => parseArgs(["--timeout"])).toThrow("process.exit(1)");
   });
@@ -462,6 +466,13 @@ describe("config file", () => {
   it("persistent null disables", () => {
     write({ default: { persistent: null } });
     expect(loadDefaults("default").persistent).toBeNull();
+  });
+
+  it.each([0, -5, 0.5])("non-positive timeout %j dropped", (value) => {
+    write({ default: { timeout: value, headed: true } });
+    const out = loadDefaults("default") as any;
+    expect(out.timeout).toBeUndefined();
+    expect(out.headed).toBe(true);
   });
 
   it("invalid timeout dropped", () => {
