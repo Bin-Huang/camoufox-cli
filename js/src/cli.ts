@@ -554,7 +554,16 @@ async function main() {
   if (action === "install") {
     process.stderr.write("[camoufox-cli] Downloading browser...\n");
     const { installBrowser } = await import("./install.js");
-    await installBrowser();
+    try {
+      await installBrowser();
+    } catch (e: any) {
+      // A dropped connection mid-download would otherwise end in a raw undici
+      // error dump that does not say what to do. fetch's own message is only
+      // "fetch failed"; the cause holds the real reason.
+      process.stderr.write(`Error: Browser download failed: ${e?.cause?.message ?? e?.message ?? e}\n`);
+      process.stderr.write("Check your network connection, then run `camoufox-cli install` again.\n");
+      process.exit(1);
+    }
     process.stderr.write("[camoufox-cli] Browser installed.\n");
     if ((command.params as any)?.with_deps) {
       installSystemDeps();

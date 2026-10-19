@@ -539,7 +539,14 @@ def main():
     if action == "install":
         print("[camoufox-cli] Downloading browser...", file=sys.stderr)
         from .install import install_browser
-        install_browser()
+        try:
+            install_browser()
+        except Exception as e:
+            # A dropped connection mid-download would otherwise end in a long
+            # traceback that does not say what to do.
+            print(f"Error: Browser download failed: {e}", file=sys.stderr)
+            print("Check your network connection, then run `camoufox-cli install` again.", file=sys.stderr)
+            sys.exit(1)
         print("[camoufox-cli] Browser installed.", file=sys.stderr)
         if command.get("params", {}).get("with_deps"):
             _install_system_deps()
