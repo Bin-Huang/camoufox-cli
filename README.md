@@ -72,8 +72,9 @@ that tells you to run `camoufox-cli install`.
   `$XDG_CACHE_HOME/camoufox` when `XDG_CACHE_HOME` is set. The npm package
   uses `$CAMOUFOX_INSTALL_DIR` when it is set.
 - **Other files:** `~/.camoufox-cli/` holds the config file and
-  `--persistent` profiles. While a session runs, its daemon keeps
-  `/tmp/camoufox-cli-<session>.*` socket and pid files.
+  `--persistent` profiles. Each session's daemon creates
+  `/tmp/camoufox-cli-<session>.*` files (socket, pid and, for pip, a lock
+  file that stays after the daemon exits).
 
 ### Uninstall
 
@@ -81,6 +82,7 @@ that tells you to run `camoufox-cli install`.
 camoufox-cli close --all            # Stop running daemons
 npm uninstall -g camoufox-cli       # Or: pipx uninstall camoufox-cli
 rm -rf ~/Library/Caches/camoufox    # macOS browser cache (Linux: ~/.cache/camoufox)
+rm -f /tmp/camoufox-cli-*            # Leftover socket, pid and lock files
 rm -rf ~/.camoufox-cli              # Optional: config and persistent profiles
 ```
 

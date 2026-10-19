@@ -15,6 +15,8 @@ from .config import load_defaults
 
 
 SOCKET_PREFIX = "/tmp/camoufox-cli-"
+# Commands whose arguments are free text: there "-h" is data, not a help flag.
+_FREE_TEXT_ACTIONS = {"fill", "type", "select", "press", "eval", "text", "wait"}
 # A unix socket path must fit in sun_path: 104 bytes on macOS (108 on Linux),
 # including the terminating NUL.
 _MAX_SOCKET_PATH_BYTES = 103
@@ -220,7 +222,10 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
         print(USAGE, file=sys.stderr)
         sys.exit(1)
 
-    if rest[0] in ("help", "--help", "-h"):
+    # "install --help" must print help, not start a 1.3 GB download.
+    if rest[0] in ("help", "--help", "-h") or (
+        rest[0] not in _FREE_TEXT_ACTIONS and ("--help" in rest or "-h" in rest)
+    ):
         print(USAGE)
         sys.exit(0)
 
