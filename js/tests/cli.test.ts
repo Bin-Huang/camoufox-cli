@@ -271,6 +271,14 @@ describe("buildCommand", () => {
     expect(() => buildCommand("pdf", ["pdf"])).toThrow("process.exit");
   });
 
+  it.each([
+    ["scroll", "down", "abc"],
+    ["switch", "x"],
+    ["wait", "2abc"],
+  ])("non-integer argument %j exits", (...rest) => {
+    expect(() => buildCommand(rest[0], rest)).toThrow("process.exit(1)");
+  });
+
   it("switch missing index exits", () => {
     expect(() => buildCommand("switch", ["switch"])).toThrow("process.exit");
   });
@@ -303,6 +311,20 @@ describe("parseArgs", () => {
   it("session name at length limit", () => {
     const { flags } = parseArgs(["--session", "x".repeat(80), "open", "https://example.com"]);
     expect(flags.session).toBe("x".repeat(80));
+  });
+
+  it.each(["abc", "1.5", "", "1_000"])("--timeout %j exits", (value) => {
+    expect(() => parseArgs(["--timeout", value, "open", "https://example.com"])).toThrow("process.exit(1)");
+  });
+
+  it("--timeout missing value exits", () => {
+    expect(() => parseArgs(["--timeout"])).toThrow("process.exit(1)");
+  });
+
+  it.each([["--help"], ["-h"], ["help"], ["--session", "s", "--help"]])("%j prints usage and exits 0", (...args) => {
+    const out = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    expect(() => parseArgs(args)).toThrow("process.exit(0)");
+    expect(String(out.mock.calls[0][0])).toMatch(/^Usage: camoufox-cli/);
   });
 
   it("--no-geoip flag", () => {

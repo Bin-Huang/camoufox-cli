@@ -135,6 +135,7 @@ camoufox-cli --proxy <url> ...      # Proxy server (e.g. http://host:port or htt
 camoufox-cli --no-geoip ...         # Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 camoufox-cli --locale <tag> ...     # Force browser locale (e.g. "en-US" or "en-US,zh-CN")
 camoufox-cli --version              # Print version and exit
+camoufox-cli --help                 # Print usage and exit (also -h, help)
 ```
 
 ### `--persistent` in detail
