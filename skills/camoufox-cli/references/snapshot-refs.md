@@ -84,7 +84,7 @@ camoufox-cli click @e4
 camoufox-cli fill @e5 "user@example.com"
 
 # Fill password
-camoufox-cli fill @e6 "password123"
+camoufox-cli fill @e6 "<password>"
 
 # Submit the form
 camoufox-cli click @e7

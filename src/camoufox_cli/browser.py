@@ -18,9 +18,14 @@ _MAX_HISTORY = 200
 
 def _ensure_browser_installed() -> None:
     """Check that the Camoufox browser binary is installed, raise if not."""
+    # Upstream's camoufox_path() defaults to download_if_missing=True, which
+    # makes get_path()/launch_path() silently download ~1.3 GB on a missing
+    # or unsupported install. download_if_missing=False only checks; once it
+    # passes, launch_path() returns without a download.
     try:
-        from camoufox.pkgman import get_path
-        get_path("camoufox")
+        from camoufox.pkgman import camoufox_path, launch_path
+        camoufox_path(download_if_missing=False)
+        launch_path()
     except Exception:
         raise RuntimeError(
             "Browser not found. Run `camoufox-cli install` to download it."

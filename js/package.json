@@ -10,7 +10,6 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "node scripts/postinstall.js",
     "prepublishOnly": "cp ../README.md ../LICENSE . && npm run build"
   },
   "keywords": [
@@ -41,7 +40,6 @@
   },
   "files": [
     "dist",
-    "scripts",
     "LICENSE"
   ]
 }

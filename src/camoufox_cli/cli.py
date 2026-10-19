@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -37,6 +38,14 @@ def session_name_error(session: str) -> str | None:
     if len(session.encode()) > max_bytes:
         return f"must be at most {max_bytes} bytes (unix socket path limit)"
     return None
+
+
+def parse_int(value: str, name: str) -> int:
+    """Parse an integer argument, or exit with a one-line error."""
+    if not re.fullmatch(r"-?[0-9]+", value):
+        print(f"Error: {name} must be an integer, got {value!r}", file=sys.stderr)
+        sys.exit(1)
+    return int(value)
 
 
 def send_command(sock_path: str, command: dict) -> dict:
@@ -175,7 +184,7 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
             if i >= len(args):
                 print("Error: --timeout requires a value", file=sys.stderr)
                 sys.exit(1)
-            cli["timeout"] = int(args[i])
+            cli["timeout"] = parse_int(args[i], "--timeout")
         elif args[i] == "--json":
             cli["json"] = True
         elif args[i] == "--persistent":
@@ -206,6 +215,10 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
     if not rest:
         print(USAGE, file=sys.stderr)
         sys.exit(1)
+
+    if rest[0] in ("help", "--help", "-h"):
+        print(USAGE)
+        sys.exit(0)
 
     # session selects which config block applies, so it comes only from the CLI.
     session = cli.get("session", builtin["session"])
@@ -315,7 +328,7 @@ def build_command(action: str, rest: list[str]) -> dict:
         # Scroll & Wait
         case "scroll":
             direction = _require(rest, 1, "Usage: camoufox-cli scroll down [px]")
-            amount = int(rest[2]) if len(rest) > 2 else 500
+            amount = parse_int(rest[2], "scroll amount") if len(rest) > 2 else 500
             return {"id": "r1", "action": "scroll", "params": {"direction": direction, "amount": amount}}
         case "wait":
             target = _require(rest, 1, "Usage: camoufox-cli wait @e1 | camoufox-cli wait 2000 | camoufox-cli wait --url \"pattern\"")
@@ -325,7 +338,7 @@ def build_command(action: str, rest: list[str]) -> dict:
             elif target.startswith("@"):
                 return {"id": "r1", "action": "wait", "params": {"ref": target}}
             elif target[0].isdigit():
-                return {"id": "r1", "action": "wait", "params": {"ms": int(target)}}
+                return {"id": "r1", "action": "wait", "params": {"ms": parse_int(target, "wait time")}}
             else:
                 return {"id": "r1", "action": "wait", "params": {"selector": target}}
 
@@ -334,7 +347,7 @@ def build_command(action: str, rest: list[str]) -> dict:
             return {"id": "r1", "action": "tabs", "params": {}}
         case "switch":
             index = _require(rest, 1, "Usage: camoufox-cli switch <tab-index>")
-            return {"id": "r1", "action": "switch", "params": {"index": int(index)}}
+            return {"id": "r1", "action": "switch", "params": {"index": parse_int(index, "tab index")}}
         # Install
         case "install":
             return {"id": "r1", "action": "install", "params": {"with_deps": "--with-deps" in rest}}
@@ -492,6 +505,12 @@ def _install_system_deps() -> None:
 
 
 def main():
+    # The daemon listens on a unix socket and locks its pid file with fcntl;
+    # neither exists on native Windows.
+    if sys.platform == "win32":
+        print("Error: camoufox-cli supports macOS and Linux only. On Windows, run it inside WSL.", file=sys.stderr)
+        sys.exit(1)
+
     args = sys.argv[1:]
 
     # Short-circuit before parse_args: --version has no command and needs no daemon.
@@ -641,6 +660,7 @@ Flags:
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
   --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")
   --version            Print version and exit
+  --help, -h           Print this help and exit
 
 Config file:
   ~/.camoufox-cli/config.json sets defaults for the flags above (override the

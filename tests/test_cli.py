@@ -209,6 +209,17 @@ class TestBuildCommand:
         with pytest.raises(SystemExit):
             build_command("mouse", ["mouse", "move", "10", "20"])
 
+    @pytest.mark.parametrize("rest", [
+        ["scroll", "down", "abc"],
+        ["switch", "x"],
+        ["wait", "2abc"],
+    ])
+    def test_non_integer_argument_exits(self, rest, capsys):
+        with pytest.raises(SystemExit) as exc:
+            build_command(rest[0], rest)
+        assert exc.value.code == 1
+        assert "must be an integer" in capsys.readouterr().err
+
     def test_fill_missing_text(self):
         with pytest.raises(SystemExit):
             build_command("fill", ["fill", "@e1"])
@@ -261,6 +272,22 @@ class TestParseArgs:
     def test_timeout_flag(self):
         flags, cmd = parse_args(["--timeout", "60", "open", "https://example.com"])
         assert flags["timeout"] == 60
+
+    @pytest.mark.parametrize("value", ["abc", "1.5", "", "1_000"])
+    def test_timeout_non_integer_exits(self, value, capsys):
+        with pytest.raises(SystemExit) as exc:
+            parse_args(["--timeout", value, "open", "https://example.com"])
+        assert exc.value.code == 1
+        assert "--timeout must be an integer" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("args", [["--help"], ["-h"], ["help"], ["--session", "s", "--help"]])
+    def test_help_exits_zero(self, args, capsys):
+        with pytest.raises(SystemExit) as exc:
+            parse_args(args)
+        assert exc.value.code == 0
+        out = capsys.readouterr()
+        assert out.out.startswith("Usage: camoufox-cli")
+        assert "Unknown command" not in out.err
 
     def test_json_flag(self):
         flags, cmd = parse_args(["--json", "open", "https://example.com"])

@@ -133,6 +133,7 @@ camoufox-cli --proxy <url> ...      # Proxy server (e.g. http://host:port or htt
 camoufox-cli --no-geoip ...         # Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 camoufox-cli --locale <tag> ...     # Force browser locale (e.g. "en-US" or "en-US,zh-CN")
 camoufox-cli --version              # Print version and exit
+camoufox-cli --help                 # Print usage and exit (also -h, help)
 ```
 
 ### `--persistent` in detail
@@ -146,6 +147,6 @@ Set defaults for the flags above in `~/.camoufox-cli/config.json` (override path
 ```json
 {
   "default": { "persistent": true, "timeout": 3600 },
-  "sessions": { "<your-session-name>": { "proxy": "socks5://127.0.0.1:1080", "locale": "zh-CN" } }
+  "sessions": { "<your-session-name>": { "proxy": "http://127.0.0.1:8080", "locale": "zh-CN" } }
 }
 ```
