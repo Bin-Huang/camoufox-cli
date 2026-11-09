@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "node scripts/postinstall.js",
-    "prepublishOnly": "cp ../README.md ../LICENSE . && npm run build"
+    "prepublishOnly": "cp ../README.md ../LICENSE . && npm run build",
+    "prepack": "rm -rf guide && cp -R ../src/camoufox_cli/guide guide",
+    "postpack": "rm -rf guide"
   },
   "keywords": [
     "browser",
@@ -41,6 +43,7 @@
   },
   "files": [
     "dist",
+    "guide",
     "scripts",
     "LICENSE"
   ]

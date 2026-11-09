@@ -12,6 +12,7 @@ uv.lock
 # Node
 node_modules/
 js/README.md
+js/guide/
 
 # IDE
 .claude/

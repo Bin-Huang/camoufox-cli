@@ -1,8 +1,3 @@
----
-name: camoufox-cli
-description: Anti-detect browser automation CLI & Skills for AI agents. Use when the user needs to interact with websites with bot detection, CAPTCHAs, or anti-bot blocks, including navigating pages, filling forms, clicking buttons, taking screenshots, extracting data, testing web apps, or automating any browser task that requires bypassing fingerprint checks.
----
-
 # Anti-Detect Browser Automation with camoufox-cli
 
 ## Core Workflow
@@ -56,7 +51,6 @@ camoufox-cli reload                  # Reload page
 camoufox-cli url                     # Print current URL
 camoufox-cli title                   # Print page title
 camoufox-cli close                   # Close your tab (browser exits when the last tab closes)
-camoufox-cli close --all             # Force-close all sessions
 
 # Snapshot
 camoufox-cli snapshot                # Full aria tree of page
@@ -106,7 +100,7 @@ camoufox-cli cookies export file.json # Export cookies
 # Sessions
 camoufox-cli sessions                # List active sessions
 camoufox-cli --session work open <url> # Use named session
-camoufox-cli close --all             # Force-close all sessions
+camoufox-cli close --all             # Force-close every session on this machine, other agents' too (only when the user asks)
 
 # Setup
 camoufox-cli install                 # Download Camoufox browser
@@ -187,6 +181,8 @@ TAB="price-scan-$(openssl rand -hex 2)" && echo "$TAB" && camoufox-cli --tab "$T
 camoufox-cli --tab price-scan-9f3c snapshot -i
 ```
 
+If you lose your tab name, run `camoufox-cli tabs`: it lists every tab with its owner name. Never use `close --all` to clean up: it closes the browsers of every agent and user on this machine.
+
 Use tabs when subagents should act as the same identity (e.g. all operating the same logged-in account). Cleanup needs no coordination: every agent runs `close` when done, addressed to its own tab (`camoufox-cli --tab <name> close`) — it releases only that tab, and the browser exits by itself when the last tab closes.
 
 Tabs share one browser process, so commands from different tabs may queue behind a slow navigation or `wait`; separate sessions run as independent processes and execute fully in parallel. If a few agents are extremely command-heavy, consider giving those their own session and keeping the rest on tabs.
@@ -234,16 +230,16 @@ camoufox-cli sessions                  # Check active sessions
 
 Names are just strings and nothing enforces uniqueness — follow the "Picking your tab name" rule above (task slug + shell-generated random suffix, chosen once). The same applies to session names.
 
-Always run `close` when done to avoid leaked processes — with the same `--tab`/`--session` flags as your other commands, since `close` releases the tab the command is addressed to. The browser exits when the last tab closes, so every agent cleans up the same way without knowing about the others:
+When the task is done (see Core Workflow above), run `close` to avoid leaked processes — with the same `--tab`/`--session` flags as your other commands, since `close` releases the tab the command is addressed to. The browser exits when the last tab closes, so every agent cleans up the same way without knowing about the others:
 
 ```bash
 camoufox-cli --tab orders-audit-p2m close       # Free this tab; browser exits if it was the last
 camoufox-cli close                              # Same, for the default tab
 camoufox-cli --session shop-a-buyer close       # Same, within a named session
-camoufox-cli close --all                        # Force-close all sessions (cleanup escape hatch)
+camoufox-cli close --all                        # Force-close every session on this machine (only when the user asks)
 ```
 
-If a previous session was not closed properly, the daemon may still be running. Use `camoufox-cli close` (or `close --all`) to clean it up before starting new work.
+If a previous session was not closed properly, the daemon may still be running. Run `camoufox-cli close` with that session's `--session`/`--tab` flags to clean it up. Do not use `close --all` for this: other agents may still use their sessions.
 
 ## Timeouts and Slow Pages
 
@@ -377,7 +373,7 @@ camoufox-cli snapshot -i
 ```json
 {
   "default": { "persistent": true, "timeout": 3600 },
-  "sessions": { "<your-session-name>": { "proxy": "socks5://127.0.0.1:1080", "locale": "zh-CN" } }
+  "sessions": { "<your-session-name>": { "proxy": "http://user:pass@proxy.example.com:8080", "locale": "zh-CN" } }
 }
 ```
 
@@ -396,6 +392,11 @@ camoufox-cli --session b --persistent ~/.camoufox-cli/profiles/bob   open https:
 rm -rf ~/.camoufox-cli/profiles/alice
 ```
 
-## Documentation
+## More Guides
 
-- [camoufox-cli documentation](https://github.com/Bin-Huang/camoufox-cli) -- Full README, setup guide, installation, and command reference
+This guide matches the installed camoufox-cli version. Run it again after you upgrade camoufox-cli.
+
+```bash
+camoufox-cli skill commands          # Full command reference
+camoufox-cli skill snapshot-refs     # How snapshots and refs work, duplicate elements
+```

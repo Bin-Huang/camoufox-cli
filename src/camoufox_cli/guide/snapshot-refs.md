@@ -2,7 +2,7 @@
 
 Compact element references for AI agents to interact with page elements efficiently.
 
-**Related**: [commands.md](commands.md) for full command reference, [SKILL.md](../SKILL.md) for quick start.
+**Related**: `camoufox-cli skill commands` for the full command reference, `camoufox-cli skill` for quick start.
 
 ## Contents
 
