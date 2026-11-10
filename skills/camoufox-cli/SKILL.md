@@ -21,7 +21,7 @@ camoufox-cli skill > "${TMPDIR:-/tmp}/camoufox-cli-guide.md"
 
 ## If `camoufox-cli skill` fails
 
-**`command not found`**: camoufox-cli is not installed. Ask the user before you install it. Install it with npm (Node.js 20.10+) or pipx, then download the browser:
+**`command not found`**: camoufox-cli is not installed. Ask the user before you install it. Install it with npm (Node.js 20.10+) or pipx, not both, then download the browser. camoufox-cli supports macOS and Linux. On Windows, run it inside WSL.
 
 ```bash
 npm install -g camoufox-cli       # or: pipx install camoufox-cli
