@@ -17,6 +17,7 @@ export const SKILL_USAGE = "Usage: camoufox-cli skill [commands|snapshot-refs]";
 export function unknownTopicMessage(topic: string): string {
   return `Unknown topic: ${topic}\n${SKILL_USAGE}`;
 }
+
 export const HELP_ARGS: readonly string[] = ["help", "--help", "-h"];
 // After a command, only flags ask for help: `text help` targets a selector named "help".
 export const HELP_FLAGS: readonly string[] = ["--help", "-h"];

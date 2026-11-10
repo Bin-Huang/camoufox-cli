@@ -14,6 +14,8 @@ SKILL_USAGE = "Usage: camoufox-cli skill [commands|snapshot-refs]"
 
 def unknown_topic_message(topic: str) -> str:
     return f"Unknown topic: {topic}\n{SKILL_USAGE}"
+
+
 HELP_ARGS = ("help", "--help", "-h")
 # After a command, only flags ask for help: `text help` targets a selector named "help".
 HELP_FLAGS = ("--help", "-h")
