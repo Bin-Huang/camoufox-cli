@@ -1,6 +1,26 @@
 # camoufox-cli
 
+[![npm](https://img.shields.io/npm/v/camoufox-cli)](https://www.npmjs.com/package/camoufox-cli)
+[![PyPI](https://img.shields.io/pypi/v/camoufox-cli)](https://pypi.org/project/camoufox-cli/)
+[![npm downloads](https://img.shields.io/npm/dm/camoufox-cli)](https://www.npmjs.com/package/camoufox-cli)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Anti-detect browser CLI & Skills for AI agents, powered by [Camoufox](https://github.com/daijro/camoufox).
+
+Playwright and Puppeteer leak that they're automated — headless flags, canvas and
+WebGL fingerprints, missing fonts, mismatched screen metrics. Camoufox patches those
+at the C++ level, so the browser itself looks like a normal Firefox install.
+
+That's the fingerprint layer only. Detection that keys on IP reputation, request rate,
+or behavior still applies — pair it with `--proxy` and sane pacing.
+
+```bash
+camoufox-cli open https://example.com    # Launch browser & navigate
+camoufox-cli snapshot -i                  # Interactive elements only
+# - link "More information..." [ref=e1]
+camoufox-cli click @e1                    # Click by ref
+camoufox-cli close                        # Done
+```
 
 ### Highlights
 
@@ -62,16 +82,6 @@ before `camoufox-cli skill` existed, update it once (`npx skills update`, or run
 camoufox-cli skill                        # Usage guide for this version
 camoufox-cli skill commands               # Full command reference
 camoufox-cli skill snapshot-refs          # How snapshots and refs work
-```
-
-## Quick Start
-
-```bash
-camoufox-cli open https://example.com    # Launch browser & navigate
-camoufox-cli snapshot -i                  # Interactive elements only
-# - link "More information..." [ref=e1]
-camoufox-cli click @e1                    # Click by ref
-camoufox-cli close                        # Done
 ```
 
 ## Commands
@@ -263,7 +273,7 @@ camoufox-cli --session b --persistent ~/.camoufox-cli/profiles/bob   open https:
 ## Architecture
 
 ```
-CLI (camoufox-cli)  ──Unix socket──▶  Daemon (Python)  ──Playwright──▶  Camoufox (Firefox)
+CLI (camoufox-cli)  ──Unix socket──▶  Daemon (Python / Node)  ──Playwright──▶  Camoufox (Firefox)
 ```
 
 The CLI sends JSON commands to a long-running daemon process via Unix socket. The daemon manages the Camoufox browser instance and maintains the ref registry between commands. The daemon auto-starts on the first command and auto-stops after 30 minutes of inactivity.
