@@ -204,12 +204,14 @@ def _geolocate_proxy(proxy_url: str) -> dict | None:
 
 def _proxy_url_with_auth(proxy_url: str) -> str:
     """Rebuild proxy URL as scheme://user:pass@host:port for public_ip()."""
-    from urllib.parse import urlparse
+    from urllib.parse import quote, urlparse
 
     from .proxy import parse_proxy_settings
 
     settings = parse_proxy_settings(proxy_url)
     parsed = urlparse(settings["server"])
     if "username" in settings:
-        return f"{parsed.scheme}://{settings['username']}:{settings.get('password', '')}@{parsed.netloc}"
+        username = quote(settings["username"], safe="")
+        password = quote(settings.get("password", ""), safe="")
+        return f"{parsed.scheme}://{username}:{password}@{parsed.netloc}"
     return settings["server"]
