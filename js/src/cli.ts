@@ -13,8 +13,6 @@ import {
 } from "./skill.js";
 
 const SOCKET_PREFIX = "/tmp/camoufox-cli-";
-// Commands whose arguments are free text: there "-h" is data, not a help flag.
-const FREE_TEXT_ACTIONS = new Set(["fill", "type", "select", "press", "eval", "text", "wait"]);
 // A unix socket path must fit in sun_path: 104 bytes on macOS (108 on Linux),
 // including the terminating NUL.
 const MAX_SOCKET_PATH_BYTES = 103;
@@ -239,15 +237,6 @@ export function parseArgs(argv: string[]): { flags: Flags; command: Record<strin
   if (rest.length === 0) {
     process.stderr.write(USAGE + "\n");
     process.exit(1);
-  }
-
-  // "install --help" must print help, not start a 1.3 GB download.
-  if (
-    rest[0] === "help" || rest[0] === "--help" || rest[0] === "-h" ||
-    (!FREE_TEXT_ACTIONS.has(rest[0]) && (rest.includes("--help") || rest.includes("-h")))
-  ) {
-    process.stdout.write(USAGE + "\n");
-    process.exit(0);
   }
 
   // session selects which config block applies, so it comes only from the CLI.
@@ -724,7 +713,6 @@ Flags:
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
   --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")
   --version            Print version and exit
-  --help, -h           Print this help and exit
 
 Config file:
   ~/.camoufox-cli/config.json sets defaults for the flags above (override the

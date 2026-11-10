@@ -317,11 +317,6 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["--timeout", value, "open", "https://example.com"])).toThrow("process.exit(1)");
   });
 
-  it.each([["fill", "@e1", "-h"], ["eval", "--help"], ["wait", "--help"]])("%j keeps -h/--help as data", (...args) => {
-    const { command } = parseArgs(args);
-    expect(command.action).toBe(args[0]);
-  });
-
   it.each(["0", "-5"])("--timeout %j (not positive) exits", (value) => {
     expect(() => parseArgs(["--timeout", value, "open", "https://example.com"])).toThrow("process.exit(1)");
   });

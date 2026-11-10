@@ -18,8 +18,6 @@ from .skill import (
 
 
 SOCKET_PREFIX = "/tmp/camoufox-cli-"
-# Commands whose arguments are free text: there "-h" is data, not a help flag.
-_FREE_TEXT_ACTIONS = {"fill", "type", "select", "press", "eval", "text", "wait"}
 # A unix socket path must fit in sun_path: 104 bytes on macOS (108 on Linux),
 # including the terminating NUL.
 _MAX_SOCKET_PATH_BYTES = 103
@@ -224,13 +222,6 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
     if not rest:
         print(USAGE, file=sys.stderr)
         sys.exit(1)
-
-    # "install --help" must print help, not start a 1.3 GB download.
-    if rest[0] in ("help", "--help", "-h") or (
-        rest[0] not in _FREE_TEXT_ACTIONS and ("--help" in rest or "-h" in rest)
-    ):
-        print(USAGE)
-        sys.exit(0)
 
     # session selects which config block applies, so it comes only from the CLI.
     session = cli.get("session", builtin["session"])
@@ -703,7 +694,6 @@ Flags:
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
   --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")
   --version            Print version and exit
-  --help, -h           Print this help and exit
 
 Config file:
   ~/.camoufox-cli/config.json sets defaults for the flags above (override the

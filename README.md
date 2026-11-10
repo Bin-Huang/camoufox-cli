@@ -322,7 +322,7 @@ camoufox-cli --session b --persistent ~/.camoufox-cli/profiles/bob   open https:
 CLI (camoufox-cli)  ──Unix socket──▶  Daemon (Python / Node)  ──Playwright──▶  Camoufox (Firefox)
 ```
 
-The daemon runs on Node.js for the npm package and on Python for the pip package. The CLI sends JSON commands to a long-running daemon process via Unix socket. The daemon manages the Camoufox browser instance and maintains the ref registry between commands. The daemon auto-starts on the first command and auto-stops after 30 minutes of inactivity.
+The CLI sends JSON commands to a long-running daemon process via Unix socket. The daemon manages the Camoufox browser instance and maintains the ref registry between commands. The daemon auto-starts on the first command and auto-stops after 30 minutes of inactivity.
 
 ## Related
 
