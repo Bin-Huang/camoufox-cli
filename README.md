@@ -51,6 +51,19 @@ automatically falls back to scraping github.com release pages.
 npx skills add Bin-Huang/camoufox-cli
 ```
 
+The skill is a short entry file. It tells the agent to run `camoufox-cli skill`,
+which prints the usage guide that ships with the installed CLI. The agent always
+reads the guide for the CLI version on the machine, so you do not need to
+reinstall the skill after you upgrade camoufox-cli. If you installed the skill
+before `camoufox-cli skill` existed, update it once (`npx skills update`, or run
+`npx skills add` again) to get the short entry file.
+
+```bash
+camoufox-cli skill                        # Usage guide for this version
+camoufox-cli skill commands               # Full command reference
+camoufox-cli skill snapshot-refs          # How snapshots and refs work
+```
+
 ## Quick Start
 
 ```bash
@@ -196,7 +209,7 @@ Tired of repeating the same flags on every call? Put defaults in `~/.camoufox-cl
   },
   "sessions": {
     "<your-session-name>": {
-      "proxy": "socks5://127.0.0.1:1080",
+      "proxy": "http://user:pass@proxy.example.com:8080",
       "locale": "zh-CN"
     }
   }

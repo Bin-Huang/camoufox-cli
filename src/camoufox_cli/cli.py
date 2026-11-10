@@ -11,6 +11,9 @@ import tempfile
 import time
 
 from .config import load_defaults
+from .skill import (
+    HELP_ARGS, HELP_FLAGS, SKILL_USAGE, TOPICS, render_guide, unknown_command_message, unknown_topic_message,
+)
 
 
 SOCKET_PREFIX = "/tmp/camoufox-cli-"
@@ -224,6 +227,11 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
 
 def build_command(action: str, rest: list[str]) -> dict:
     """Build JSON command from action and remaining args."""
+    # Agents often try `--help` or `<command> --help` to learn the CLI. Only the
+    # first argument counts: `fill @e1 --help` must still type the text "--help".
+    if action in HELP_ARGS or (len(rest) > 1 and rest[1] in HELP_FLAGS):
+        print(USAGE)
+        sys.exit(0)
     match action:
         # Navigation
         case "open":
@@ -352,8 +360,19 @@ def build_command(action: str, rest: list[str]) -> dict:
             else:
                 return {"id": "r1", "action": "cookies", "params": {"op": "list"}}
 
+        # Usage guide
+        case "skill":
+            topic = rest[1] if len(rest) > 1 else "usage"
+            if len(rest) > 2:
+                print(SKILL_USAGE, file=sys.stderr)
+                sys.exit(1)
+            if topic not in TOPICS:
+                print(unknown_topic_message(topic), file=sys.stderr)
+                sys.exit(1)
+            return {"id": "r1", "action": "skill", "params": {"topic": topic}}
+
         case _:
-            print(f"Unknown command: {action}\n{USAGE}", file=sys.stderr)
+            print(f"{unknown_command_message(action, get_version())}\n\n{USAGE}", file=sys.stderr)
             sys.exit(1)
 
 
@@ -517,6 +536,11 @@ def main():
             _install_system_deps()
         return
 
+    # Client-side: skill
+    if action == "skill":
+        sys.stdout.write(render_guide(command["params"]["topic"], get_version()))
+        return
+
     # Client-side: sessions
     if action == "sessions":
         sessions = list_sessions()
@@ -627,6 +651,9 @@ Session:
 
 Setup:
   install [--with-deps]   Download browser (--with-deps: system libs)
+  skill [topic]           Print the usage guide for this version
+                          (topics: commands, snapshot-refs)
+  help, --help            Print this usage text
 
 Flags:
   --session <name>     Session name (default: "default")
@@ -636,7 +663,7 @@ Flags:
   --headed             Show browser window
   --timeout <secs>     Daemon idle timeout (default: 1800)
   --json               Output as JSON
-  --persistent [path]  Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
+  --persistent [path]  Persistent identity — freeze fingerprint/OS/locale + store cookies/state (default: ~/.camoufox-cli/profiles/<session>)
   --proxy <url>        Proxy server (e.g. http://host:port or https://host:443)
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
   --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")

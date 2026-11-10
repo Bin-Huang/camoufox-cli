@@ -1,6 +1,6 @@
 # Command Reference
 
-Complete reference for all camoufox-cli commands. For quick start and common patterns, see SKILL.md.
+Complete reference for all camoufox-cli commands. For quick start and common patterns, run `camoufox-cli skill`.
 
 ## Navigation
 
@@ -13,7 +13,7 @@ camoufox-cli reload                  # Reload page
 camoufox-cli url                     # Print current URL
 camoufox-cli title                   # Print page title
 camoufox-cli close                   # Close your tab (browser exits when the last tab closes)
-camoufox-cli close --all             # Force-close all sessions
+camoufox-cli close --all             # Force-close every session on this machine, other agents' too (only when the user asks)
 ```
 
 ## Snapshot (Page Analysis)
@@ -83,7 +83,7 @@ camoufox-cli --tab <name> <cmd>      # Named tab: shared browser + cookies/login
                                      # independent page/refs/history per tab
 ```
 
-Named tabs are the cheap way to run concurrent agents as one identity: every tab shares the session's single browser (same fingerprint, same login state), while snapshot refs and history stay per-tab. A finishing agent runs `close` addressed to its own tab (`--tab <name> close`) — that releases only this tab, and the browser exits by itself when the last tab closes, so no coordination between agents is needed. Tab names must be unique per agent: generate one once — a task slug + shell-generated random suffix, e.g. `TAB="price-scan-$(openssl rand -hex 2)"` — and reuse the printed name for every command; don't invent the suffix yourself (LLM-"random" characters collide).
+Named tabs are the cheap way to run concurrent agents as one identity: every tab shares the session's single browser (same fingerprint, same login state), while snapshot refs and history stay per-tab. A finishing agent runs `close` addressed to its own tab (`--tab <name> close`) — that releases only this tab, and the browser exits by itself when the last tab closes, so no coordination between agents is needed. Tab names must be unique per agent: generate one once — a task slug + shell-generated random suffix, e.g. `TAB="price-scan-$(openssl rand -hex 2)" && echo "$TAB"` — and reuse the printed name for every command; don't invent the suffix yourself (LLM-"random" characters collide). If you lose the name, `camoufox-cli tabs` lists every tab with its owner name. Never use `close --all` to clean up: it closes every agent's browser.
 
 ## Cookies
 
@@ -98,7 +98,7 @@ camoufox-cli cookies export file.json # Export cookies to file
 ```bash
 camoufox-cli sessions                # List active sessions
 camoufox-cli --session <name> <cmd>  # Run command in named session
-camoufox-cli close --all             # Force-close all sessions
+camoufox-cli close --all             # Force-close every session on this machine, other agents' too (only when the user asks)
 ```
 
 A session is a separate browser instance with its own fingerprint, cookies, and launch options (proxy/locale/persistent). For concurrent agents acting as ONE identity, prefer named tabs (see Tabs above) — one browser instead of N.
@@ -110,13 +110,15 @@ camoufox-cli eval "document.title"   # Simple expression
 camoufox-cli eval "document.querySelectorAll('img').length"
 ```
 
-For complex JavaScript with nested quotes, use shell escaping carefully or pipe via stdin.
+For complex JavaScript with nested quotes, wrap the expression in single quotes and use double quotes inside it.
 
 ## Setup
 
 ```bash
 camoufox-cli install                 # Download Camoufox browser
 camoufox-cli install --with-deps     # Download browser + system libs (Linux)
+camoufox-cli skill [topic]           # Print the usage guide for this version (topics: commands, snapshot-refs)
+camoufox-cli --help                  # Print the usage text
 ```
 
 ## Global Options
@@ -137,7 +139,7 @@ camoufox-cli --version              # Print version and exit
 
 ### `--persistent` in detail
 
-Stores fingerprint, OS, canvas/font seeds, locale, and proxy-derived timezone/geolocation in `<path>/camoufox-cli.json` and reloads it on every launch with the same path. Fingerprint/OS/seeds are frozen — delete the directory to reset. `--locale` overwrites the stored locale when passed; `--proxy` + GeoIP re-derives timezone/geolocation each launch and writes back. `--proxy` and `--no-geoip` themselves are never stored. See the README for the full mental model.
+Stores fingerprint, OS, canvas/font seeds, locale, and proxy-derived timezone/geolocation in `<path>/camoufox-cli.json` and reloads it on every launch with the same path. Fingerprint/OS/seeds are frozen — delete the directory to reset. `--locale` overwrites the stored locale when passed; `--proxy` + GeoIP re-derives timezone/geolocation each launch and writes back. `--proxy` and `--no-geoip` themselves are never stored. `camoufox-cli skill` has a longer section on persistent identity.
 
 ### Config file
 
@@ -146,6 +148,6 @@ Set defaults for the flags above in `~/.camoufox-cli/config.json` (override path
 ```json
 {
   "default": { "persistent": true, "timeout": 3600 },
-  "sessions": { "<your-session-name>": { "proxy": "socks5://127.0.0.1:1080", "locale": "zh-CN" } }
+  "sessions": { "<your-session-name>": { "proxy": "http://user:pass@proxy.example.com:8080", "locale": "zh-CN" } }
 }
 ```

@@ -8,6 +8,9 @@ import * as path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadDefaults } from "./config.js";
+import {
+  HELP_ARGS, HELP_FLAGS, SKILL_USAGE, TOPICS, renderGuide, unknownCommandMessage, unknownTopicMessage,
+} from "./skill.js";
 
 const SOCKET_PREFIX = "/tmp/camoufox-cli-";
 // A unix socket path must fit in sun_path: 104 bytes on macOS (108 on Linux),
@@ -246,6 +249,12 @@ function require_(args: string[], idx: number, usage: string): string {
 }
 
 export function buildCommand(action: string, rest: string[]): Record<string, unknown> {
+  // Agents often try `--help` or `<command> --help` to learn the CLI. Only the
+  // first argument counts: `fill @e1 --help` must still type the text "--help".
+  if (HELP_ARGS.includes(action) || (rest.length > 1 && HELP_FLAGS.includes(rest[1]))) {
+    process.stdout.write(USAGE + "\n");
+    process.exit(0);
+  }
   switch (action) {
     case "open":
       return { id: "r1", action: "open", params: { url: require_(rest, 1, "Usage: camoufox-cli open <url>") } };
@@ -344,8 +353,22 @@ export function buildCommand(action: string, rest: string[]): Record<string, unk
       return { id: "r1", action: "cookies", params: { op: "list" } };
     }
 
+    // Usage guide
+    case "skill": {
+      const topic = rest[1] ?? "usage";
+      if (rest.length > 2) {
+        process.stderr.write(SKILL_USAGE + "\n");
+        process.exit(1);
+      }
+      if (!(TOPICS as readonly string[]).includes(topic)) {
+        process.stderr.write(unknownTopicMessage(topic) + "\n");
+        process.exit(1);
+      }
+      return { id: "r1", action: "skill", params: { topic } };
+    }
+
     default:
-      process.stderr.write(`Unknown command: ${action}\n${USAGE}\n`);
+      process.stderr.write(`${unknownCommandMessage(action, getVersion())}\n\n${USAGE}\n`);
       process.exit(1);
   }
 }
@@ -530,6 +553,12 @@ async function main() {
     return;
   }
 
+  // Client-side: skill
+  if (action === "skill") {
+    process.stdout.write(renderGuide((command.params as any).topic, getVersion()));
+    return;
+  }
+
   // Client-side: sessions
   if (action === "sessions") {
     const sessions = listSessions();
@@ -637,6 +666,9 @@ Session:
 
 Setup:
   install [--with-deps]   Download browser (--with-deps: system libs)
+  skill [topic]           Print the usage guide for this version
+                          (topics: commands, snapshot-refs)
+  help, --help            Print this usage text
 
 Flags:
   --session <name>     Session name (default: "default")
